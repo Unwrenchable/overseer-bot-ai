@@ -12,10 +12,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - VAULT-TEC OVERSEER
                     handlers=[logging.FileHandler("overseer_ai.log"), logging.StreamHandler()])
 
 # === INSERT YOUR X API KEYS HERE ===
-CONSUMER_KEY = '***REMOVED***'
-CONSUMER_SECRET = '***REMOVED***'
-ACCESS_TOKEN = '***REMOVED***'
-ACCESS_SECRET = '***REMOVED***'
+import os
+CONSUMER_KEY = os.getenv('CONSUMER_KEY')
+CONSUMER_SECRET = os.getenv('CONSUMER_SECRET')
+ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 
 GAME_LINK = "https://www.atomicfizzcaps.xyz"
 
@@ -152,4 +153,5 @@ except Exception as e:
 # Main loop
 while True:
     schedule.run_pending()
+
     time.sleep(60)
