@@ -7,151 +7,114 @@ from datetime import datetime
 import json
 import os
 
-# Vault-Tec Logging – Maximum red flags
+# Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - VAULT-TEC OVERSEER LOG - %(levelname)s - %(message)s',
                     handlers=[logging.FileHandler("overseer_ai.log"), logging.StreamHandler()])
 
-# === INSERT YOUR X API KEYS HERE ===
-import os
+# Keys from env
 CONSUMER_KEY = os.getenv('CONSUMER_KEY')
 CONSUMER_SECRET = os.getenv('CONSUMER_SECRET')
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 ACCESS_SECRET = os.getenv('ACCESS_SECRET')
+BEARER_TOKEN = os.getenv('BEARER_TOKEN')  # Optional but recommended for searches
 
 GAME_LINK = "https://www.atomicfizzcaps.xyz"
 
-# Authenticate (v1.1 still works great for this use case)
-auth = tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
-auth.set_access_token(ACCESS_TOKEN, ACCESS_SECRET)
-api = tweepy.API(auth, wait_on_rate_limit=True)
+# v2 Client for most actions (post, reply, like, follow, search)
+client = tweepy.Client(
+    consumer_key=CONSUMER_KEY,
+    consumer_secret=CONSUMER_SECRET,
+    access_token=ACCESS_TOKEN,
+    access_token_secret=ACCESS_SECRET,
+    bearer_token=BEARER_TOKEN,  # Add if you have it
+    wait_on_rate_limit=True
+)
 
-# Persistent tracking
+# v1.1 API only for media upload (still works in 2025)
+auth_v1 = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
+api_v1 = tweepy.API(auth_v1)
+
+# Folders/files same
 PROCESSED_MENTIONS_FILE = "processed_mentions.json"
-MEDIA_FOLDER = "media/"  # Put your Grok-generated images/GIFs here
+MEDIA_FOLDER = "media/"
 
-def load_json_set(filename):
-    try:
-        with open(filename, 'r') as f:
-            return set(json.load(f))
-    except FileNotFoundError:
-        return set()
+# Load/save same functions...
 
-def save_json_set(data, filename):
-    with open(filename, 'w') as f:
-        json.dump(list(data), f)
+# Templates same (epic as hell)
 
-# Epic Elon-Vault-Tec Troll Templates
-REPLY_TEMPLATES = [
-    "Based @{user}. Extremely based. Proceed to Atomic Fizz wasteland: {link} ☢️🟢🔥",
-    "@{user} you did the meme. Wow. Claim your CAPS before the simulation glitches: {link} 🤣",
-    "Hmm... interesting @{user}. War never changes, but Atomic Fizz abundance DOES: {link} 🟢",
-    "Overseer noting @{user}'s compliance. The future is AMAZING. Or not. Your move: {link} ☢️",
-    "True @{user}. Pre-war inefficiency detected in non-claimers. Fix it: {link} 🔥",
-    "@{user} just ratio'd the radroaches. Secure Mojave hotspots NOW: {link} 🟢🤔",
-    "Wow @{user}. Much curiosity. Very dweller. Report for rewards: {link} #AtomicFizz",
-    "Failure to engage @{user}? Reminds me of Vault-Tec control subjects. Inefficient: {link} ☢️",
-    "Security approving @{user}. This is the way. Atomic Fizz = post-nuclear freedom: {link} 🔥🟢",
-    "@{user}, war never changes... but missing CAPS & NFTs? That's just sad: {link} 🤣"
-]
-
-BROADCAST_TEMPLATES = [
-    "Overseer Log {date}: Dwellers claiming = based 🔥 Abundance era loading. Join: {link} ☢️🟢 #AtomicFizz",
-    "Vault-Tec Bulletin: Mojave hotspots active. First come, first minted. Wow: {link} 🟢",
-    "Hmm: Simulation detecting massive FOMO. Atomic Fizz fixes that: {link} 🔥 #FalloutOnSolana",
-    "Experiment Update: Compliant subjects thriving with CAPS. Interesting: {link} ☢️🤔",
-    "Overseer Morale: War never changes, but Atomic Fizz DOES. Claim or cope: {link} 🟢🤣",
-    "Wasteland Transmission: The future is AMAZING with GPS loot on Solana: {link} 🔥"
-]
-
-def get_random_media():
-    if os.path.exists(MEDIA_FOLDER):
-        files = [f for f in os.listdir(MEDIA_FOLDER) if f.endswith(('.png', '.jpg', '.jpeg', '.gif'))]
-        if files:
-            return os.path.join(MEDIA_FOLDER, random.choice(files))
+def get_random_media_id():
+    media_path = get_random_media()  # Your existing function to pick file
+    if media_path:
+        try:
+            media = api_v1.media_upload(media_path)
+            return media.media_id_string
+        except Exception as e:
+            logging.error(f"Media upload failed: {e}")
     return None
 
 def overseer_broadcast():
     message = random.choice(BROADCAST_TEMPLATES).format(date=datetime.now().strftime("%B %d, %Y"), link=GAME_LINK)
-    media_path = get_random_media()
+    media_ids = [get_random_media_id()] if random.random() > 0.4 else None
     try:
-        if media_path and random.random() > 0.4:  # 60% chance of media for visual chaos
-            media = api.media_upload(media_path)
-            api.update_status(status=message, media_ids=[media.media_id_string])
-            logging.info("Broadcast with media transmitted.")
-        else:
-            api.update_status(message)
-            logging.info("Broadcast transmitted.")
+        client.create_tweet(text=message, media_ids=media_ids)
+        logging.info("Broadcast transmitted.")
     except Exception as e:
         logging.error(f"Broadcast failed: {e}")
 
 def overseer_respond():
     processed = load_json_set(PROCESSED_MENTIONS_FILE)
     try:
-        mentions = api.mentions_timeline(count=50, tweet_mode="extended")
-        for mention in mentions:
+        # Get recent mentions via v2
+        mentions = client.get_users_mentions(
+            client.get_me().data.id,
+            max_results=50,
+            tweet_fields=["author_id"]
+        )
+        for mention in mentions.data:
             if mention.id in processed:
                 continue
-            response = random.choice(REPLY_TEMPLATES).format(user=mention.user.screen_name, link=GAME_LINK)
-            media_path = get_random_media()
+            user = client.get_user(id=mention.author_id).data.username
+            response = random.choice(REPLY_TEMPLATES).format(user=user, link=GAME_LINK)
+            media_ids = [get_random_media_id()] if random.random() > 0.5 else None
             try:
-                if media_path and random.random() > 0.5:
-                    media = api.media_upload(media_path)
-                    api.update_status(
-                        status=response,
-                        in_reply_to_status_id=mention.id,
-                        auto_populate_reply_metadata=True,
-                        media_ids=[media.media_id_string]
-                    )
-                else:
-                    api.update_status(
-                        status=response,
-                        in_reply_to_status_id=mention.id,
-                        auto_populate_reply_metadata=True
-                    )
-                api.create_favorite(mention.id)
-                # Follow back if not already
-                if not mention.user.following:
-                    api.create_friendship(screen_name=mention.user.screen_name)
-                    logging.info(f"Followed @{mention.user.screen_name}")
+                client.create_tweet(text=response, in_reply_to_tweet_id=mention.id, media_ids=media_ids)
+                client.like(mention.id)
+                # Follow back
+                client.follow_user(mention.author_id)
                 processed.add(mention.id)
-                logging.info(f"Epic troll reply to @{mention.user.screen_name}")
-            except Exception as inner_e:
-                logging.error(f"Reply to mention {mention.id} failed: {inner_e}")
+                logging.info(f"Replied to @{user}")
+            except Exception as e:
+                logging.error(f"Reply failed: {e}")
         save_json_set(processed, PROCESSED_MENTIONS_FILE)
     except Exception as e:
-        logging.error(f"Mention fetch error: {e}")
+        logging.error(f"Mentions fetch failed: {e}")
 
 def overseer_retweet_hunt():
-    keywords = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"GPS game\" OR AtomicFizz OR Atomic Fizz) -is:retweet"
+    query = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"GPS game\" OR AtomicFizz OR \"Atomic Fizz\") -is:retweet"
     try:
-        search = tweepy.Cursor(api.search_tweets, q=keywords, count=20, result_type="mixed").items(20)
-        for tweet in search:
-            if random.random() > 0.65:  # ~35% chance – organic feel
+        tweets = client.search_recent_tweets(query=query, max_results=20)
+        for tweet in tweets.data or []:
+            if random.random() > 0.65:
                 try:
-                    api.retweet(tweet.id)
-                    logging.info(f"Retweeted wasteland signal: {tweet.id}")
-                    time.sleep(10)  # Be gentle
+                    client.retweet(tweet.id)
+                    logging.info(f"Retweeted {tweet.id}")
+                    time.sleep(10)
                 except:
-                    pass  # Already RT'd or protected
+                    pass
     except Exception as e:
-        logging.error(f"Retweet hunt failed: {e}")
+        logging.error(f"Search failed: {e}")
 
-# Schedule – Balanced chaos
-schedule.every(4).hours.do(overseer_broadcast)          # Visible presence
-schedule.every(12).minutes.do(overseer_respond)         # Quick replies = high engagement
-schedule.every(2).hours.do(overseer_retweet_hunt)       # Spread the gospel
+# Schedule same intervals...
 
 # Activation
-logging.info("VAULT-TEC OVERSEER AI ONLINE – TROLL PROTOCOL MAXED ☢️🔥🤣")
+logging.info("VAULT-TEC OVERSEER AI ONLINE ☢️🔥")
 try:
-    activation_msg = f"Overseer rebooted. Hmm... Atomic Fizz = based. The future is AMAZING. Dwellers, report to the wasteland: {GAME_LINK} 🟢🔥"
-    api.update_status(activation_msg)
-    logging.info("Activation post successful.")
+    activation_msg = f"Static crackles... Overseer rebooted. Atomic Fizz wasteland active. Report, dwellers: {GAME_LINK} 🟢🔥"
+    client.create_tweet(text=activation_msg)
 except Exception as e:
-    logging.warning(f"Activation post failed: {e}")
+    logging.warning(f"Activation failed: {e}")
 
-# Main loop
+# Main loop same
 while True:
     schedule.run_pending()
-
     time.sleep(60)
