@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "overseer_bot.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/overseer_bot.py" }
+  ]
+}
