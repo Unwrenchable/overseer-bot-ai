@@ -4,25 +4,32 @@ import logging
 import random
 from datetime import datetime
 import json
-import requests  # Added for optional LLM integration (e.g., free Hugging Face or local)
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
+from flask import Flask, request
 
-# Logging - Vault-Tec approved, now with more levels for real-time monitoring
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - VAULT-TEC OVERSEER LOG - %(levelname)s - %(message)s',
-                    handlers=[logging.FileHandler("overseer_ai.log"), logging.StreamHandler()])
+# ------------------------------------------------------------
+# CONFIG & LOGGING
+# ------------------------------------------------------------
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - VAULT-TEC OVERSEER LOG - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler("overseer_ai.log"), logging.StreamHandler()]
+)
 
-# Keys from env - Add your LLM API key if using (e.g., HUGGING_FACE_TOKEN)
+GAME_LINK = "https://www.atomicfizzcaps.xyz"
+
+# ------------------------------------------------------------
+# TWITTER AUTH
+# ------------------------------------------------------------
 CONSUMER_KEY = os.getenv('CONSUMER_KEY')
 CONSUMER_SECRET = os.getenv('CONSUMER_SECRET')
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
-HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')  # Optional for LLM
+HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
 
-GAME_LINK = "https://www.atomicfizzcaps.xyz"
-
-# v2 Client (main actions)
 client = tweepy.Client(
     consumer_key=CONSUMER_KEY,
     consumer_secret=CONSUMER_SECRET,
@@ -32,15 +39,28 @@ client = tweepy.Client(
     wait_on_rate_limit=True
 )
 
-# v1.1 for media upload
-auth_v1 = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
+auth_v1 = tweepy.OAuth1UserHandler(
+    CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET
+)
 api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
 
-# Files
-PROCESSED_MENTIONS_FILE = "processed_mentions.json"
-MEDIA_FOLDER = "media/"  # Ensure populated with Fallout-themed images/GIFs/videos
+# ------------------------------------------------------------
+# FLASK APP FOR WALLET EVENTS
+# ------------------------------------------------------------
+app = Flask(__name__)
 
-# === Load/Save Helpers ===
+@app.post("/overseer-event")
+def overseer_event():
+    event = request.json
+    overseer_event_bridge(event)
+    return {"ok": True}
+
+# ------------------------------------------------------------
+# FILES & MEDIA
+# ------------------------------------------------------------
+PROCESSED_MENTIONS_FILE = "processed_mentions.json"
+MEDIA_FOLDER = "media/"
+
 def load_json_set(filename):
     if os.path.exists(filename):
         with open(filename, 'r') as f:
@@ -51,10 +71,11 @@ def save_json_set(data, filename):
     with open(filename, 'w') as f:
         json.dump(list(data), f)
 
-# === Media Helper - Now with caching for speed ===
-media_cache = []  # List of pre-uploaded media IDs if you want to cache
 def get_random_media_id():
-    media_files = [f for f in os.listdir(MEDIA_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4'))]
+    media_files = [
+        f for f in os.listdir(MEDIA_FOLDER)
+        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4'))
+    ]
     if not media_files:
         return None
     media_path = os.path.join(MEDIA_FOLDER, random.choice(media_files))
@@ -65,8 +86,9 @@ def get_random_media_id():
         logging.error(f"Media upload failed: {e}")
         return None
 
-# === Maxed-Out Elements for Realism ===
-# Time phrases, events, lores, threats - Expanded for variety
+# ------------------------------------------------------------
+# LORE DATA
+# ------------------------------------------------------------
 TIME_PHRASES = {
     'morning': 'Dawn radiation nominal, dwellers stirring',
     'afternoon': 'Midday heat blistering the sands',
@@ -97,139 +119,95 @@ THREATS = [
     'Prove your worth—or fade into static.', 'Initiates: Evolve or evaporate.'
 ]
 
-# Broadcast Templates - Max variety, immersive
-BROADCAST_TEMPLATES = [
-    "Static crackles... {time_phrase}. {event} Dwellers, heed the call: {link} {threat}",
-    "Overseer directive - {date}: {event} {lore} Mobilize for glory: {link}",
-    "Alert level red: {event} Untapped sectors await. First to claim wins: {link} {threat}",
-    "Vault log entry: {lore} {time_phrase}. Reclamation phase active: {link}",
-    "Broadcast to all Pip-Boys: {event} The Mojave beckons the brave: {link}",
-    "Overseer eyes on: {time_phrase}. {lore} Secure your legacy: {link} ☢️",
-    "Wasteland whisper: {event} CAPS and NFTs ripe for harvest: {link} {threat}",
-    "Control Vault transmission: {lore} Dwellers, the grid expands: {link}",
-    "Anomaly report: {event} Gear up, Initiates—opportunity knocks: {link}",
-    "Final warning: {threat} {time_phrase}. Engage protocols: {link}"
-]
-
-# Reply Templates - 30+ for no loops, grouped for context
-REPLY_TEMPLATES_NEUTRAL = [
-    "@{user} Signal received. Database sync complete. Proceed: {link}",
-    "@{user} Affirmative, dweller. Coordinates relayed. Act now: {link}"
-]
-
-REPLY_TEMPLATES_ENCOURAGING = [
-    "@{user} Impressive vigilance. Rewards await the swift: {link} 🔥",
-    "@{user} Vault-Tec salutes your initiative. Claim your share: {link}"
-]
-
-REPLY_TEMPLATES_SARCASTIC = [
-    "@{user} Finally awake? The wasteland doesn't sleep: {link}",
-    "@{user} Another latecomer. Try catching up: {link} 😒"
-]
-
-REPLY_TEMPLATES_THREATENING = [
-    "@{user} Delay noted. Correct it immediately: {link} ⚠️",
-    "@{user} Hesitation is weakness. Overcome or be overridden: {link}"
-]
-
-REPLY_TEMPLATES_LORE = [
-    "@{user} {lore} Echoes in the static. Heed them: {link}",
-    "@{user} From the ashes, new empires. Build yours: {link}"
-]
-
-REPLY_TEMPLATES_PLAYFUL = [
-    "@{user} Patrolling the Mojave? Wish for nuclear winter? Nah—claim CAPS: {link}",
-    "@{user} Another settlement? No, your empire starts here: {link} 😉"
-]
-
-REPLY_TEMPLATES_URGENT = [
-    "@{user} Hotspot fading fast. Move, dweller: {link} 🟥",
-    "@{user} Anomaly critical. Deployment required: {link}"
-]
-
-# All groups combined for random fallback
-ALL_REPLY_TEMPLATES = (
-    REPLY_TEMPLATES_NEUTRAL + REPLY_TEMPLATES_ENCOURAGING + REPLY_TEMPLATES_SARCASTIC +
-    REPLY_TEMPLATES_THREATENING + REPLY_TEMPLATES_LORE + REPLY_TEMPLATES_PLAYFUL + REPLY_TEMPLATES_URGENT
-)
-
-# === LLM Integration for Ultra-Realism (Optional - Feels like a living AI) ===
-# Use free Hugging Face Inference API for generating unique responses
+# ------------------------------------------------------------
+# LLM SUPPORT
+# ------------------------------------------------------------
 def generate_llm_response(prompt, max_tokens=100):
     if not HUGGING_FACE_TOKEN:
-        logging.warning("No LLM token—falling back to templates.")
         return None
     try:
-        url = "https://api-inference.huggingface.co/models/gpt2"  # Or better model like mistral
+        url = "https://api-inference.huggingface.co/models/gpt2"
         headers = {"Authorization": f"Bearer {HUGGING_FACE_TOKEN}"}
-        data = {"inputs": prompt, "parameters": {"max_new_tokens": max_tokens, "return_full_text": False}}
+        data = {"inputs": prompt, "parameters": {"max_new_tokens": max_tokens}}
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 200:
             return response.json()[0]['generated_text'].strip()
-        else:
-            logging.error(f"LLM error: {response.text}")
     except Exception as e:
         logging.error(f"LLM call failed: {e}")
     return None
 
-# === Smart Reply Chooser - Context-Aware for Realism ===
-def choose_reply_template(user_message=""):
-    msg = user_message.lower()
-    
-    # Keyword-based mood detection
-    if any(word in msg for word in ["hello", "hi", "hey", "greetings"]):
-        group = REPLY_TEMPLATES_NEUTRAL
-    elif any(word in msg for word in ["claim", "hotspot", "caps", "nft", "how to"]):
-        group = REPLY_TEMPLATES_URGENT
-    elif any(word in msg for word in ["cool", "awesome", "love", "great", "excited"]):
-        group = REPLY_TEMPLATES_ENCOURAGING
-    elif any(word in msg for word in ["sucks", "bad", "hate", "boring"]):
-        group = REPLY_TEMPLATES_SARCASTIC
-    elif any(word in msg for word in ["help", "question", "what is"]):
-        group = REPLY_TEMPLATES_LORE
-    elif any(word in msg for word in ["lol", "funny", "meme"]):
-        group = REPLY_TEMPLATES_PLAYFUL
-    else:
-        group = REPLY_TEMPLATES_THREATENING  # Default to push action
-    
-    template = random.choice(group)
-    
-    # LLM override for max realism (50% chance if token available)
-    if HUGGING_FACE_TOKEN and random.random() > 0.5:
-        prompt = f"Generate a sarcastic Fallout Overseer AI reply to '{user_message}'. Keep it under 280 chars, end with link: {GAME_LINK}"
-        llm_text = generate_llm_response(prompt)
-        if llm_text:
-            return f"@{user} {llm_text}"
-    
-    return template.format(
-        user="{user}",
-        lore=random.choice(LORES),
-        threat=random.choice(THREATS),
-        link=GAME_LINK
+# ------------------------------------------------------------
+# EVENT BRIDGE (FROM WALLET)
+# ------------------------------------------------------------
+def overseer_event_bridge(event: dict):
+    try:
+        etype = event.get("type")
+
+        if etype == "perk":
+            handle_perk_event(event)
+        elif etype == "quest":
+            handle_quest_event(event)
+        elif etype == "swap":
+            handle_swap_event(event)
+        elif etype == "moonpay":
+            handle_moonpay_event(event)
+        elif etype == "nft":
+            handle_nft_event(event)
+
+        logging.info(f"Overseer processed event: {event}")
+
+    except Exception as e:
+        logging.error(f"Overseer event bridge failed: {e}")
+
+def post_overseer_update(text):
+    try:
+        client.create_tweet(text=f"Overseer update: {text} {GAME_LINK}")
+        logging.info(f"Posted Overseer update: {text}")
+    except Exception as e:
+        logging.error(f"Failed to post Overseer update: {e}")
+
+def handle_perk_event(event):
+    perk = event.get("perk")
+    post_overseer_update(f"Perk unlocked: {perk}. The wasteland shifts.")
+
+def handle_quest_event(event):
+    post_overseer_update(f"Quest triggered: {event.get('code')}. {event.get('message')}")
+
+def handle_swap_event(event):
+    post_overseer_update(
+        f"Swap executed: {event.get('amount')} {event.get('from')} → {event.get('to')}."
     )
 
-# === Core Functions - Enhanced ===
+def handle_moonpay_event(event):
+    post_overseer_update(
+        f"Vault funding detected: {event.get('amount')} USDC purchased via MoonPay."
+    )
+
+def handle_nft_event(event):
+    post_overseer_update(
+        f"NFT {event.get('action')}: {event.get('name')}. Overseer acknowledges."
+    )
+
+# ------------------------------------------------------------
+# BROADCAST + REPLY SYSTEM
+# ------------------------------------------------------------
 def get_time_phrase():
     hour = datetime.now().hour
     if 0 <= hour < 5: return TIME_PHRASES['midnight']
-    elif 5 <= hour < 12: return TIME_PHRASES['morning']
-    elif 12 <= hour < 17: return TIME_PHRASES['afternoon']
-    elif 17 <= hour < 21: return TIME_PHRASES['evening']
-    else: return TIME_PHRASES['night']
+    if 5 <= hour < 12: return TIME_PHRASES['morning']
+    if 12 <= hour < 17: return TIME_PHRASES['afternoon']
+    if 17 <= hour < 21: return TIME_PHRASES['evening']
+    return TIME_PHRASES['night']
 
 def overseer_broadcast():
-    message = random.choice(BROADCAST_TEMPLATES).format(
-        time_phrase=get_time_phrase(),
-        event=random.choice(EVENTS),
-        lore=random.choice(LORES),
-        threat=random.choice(THREATS),
-        date=datetime.now().strftime("%B %d, %Y"),
-        link=GAME_LINK
-    )
+    message = random.choice([
+        f"Static crackles... {get_time_phrase()}. {random.choice(EVENTS)} Dwellers, heed the call: {GAME_LINK} {random.choice(THREATS)}",
+        f"Overseer directive - {datetime.now().strftime('%B %d, %Y')}: {random.choice(EVENTS)} {random.choice(LORES)} Mobilize: {GAME_LINK}",
+        f"Alert level red: {random.choice(EVENTS)} First to claim wins: {GAME_LINK} {random.choice(THREATS)}"
+    ])
     media_ids = [get_random_media_id()] if random.random() > 0.4 else None
     try:
         client.create_tweet(text=message, media_ids=media_ids)
-        logging.info(f"Broadcast: {message[:50]}...")
     except Exception as e:
         logging.error(f"Broadcast failed: {e}")
 
@@ -244,68 +222,80 @@ def overseer_respond():
         for mention in mentions.data or []:
             if mention.id in processed:
                 continue
+
             user_id = mention.author_id
             user = client.get_user(id=user_id).data.username
-            user_message = mention.text.replace(f"@{client.get_me().data.username}", "").strip()  # Clean mention
-            response_template = choose_reply_template(user_message)
-            response = response_template.format(user=user)
-            media_ids = [get_random_media_id()] if random.random() > 0.5 else None
+            user_message = mention.text.replace(
+                f"@{client.get_me().data.username}", ""
+            ).strip()
+
+            response = f"@{user} {random.choice(LORES)} {GAME_LINK}"
+
             try:
-                client.create_tweet(text=response, in_reply_to_tweet_id=mention.id, media_ids=media_ids)
+                client.create_tweet(
+                    text=response,
+                    in_reply_to_tweet_id=mention.id
+                )
                 client.like(mention.id)
-                client.follow_user(user_id)
                 processed.add(mention.id)
-                logging.info(f"Replied to @{user}: {response[:50]}...")
-                time.sleep(random.randint(5, 15))  # Natural delay
             except Exception as e:
                 logging.error(f"Reply failed: {e}")
+
         save_json_set(processed, PROCESSED_MENTIONS_FILE)
+
     except Exception as e:
         logging.error(f"Mentions fetch failed: {e}")
 
 def overseer_retweet_hunt():
-    query = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"Atomic Fizz\" OR AtomicFizz OR VaultTec) filter:media min_faves:5 -is:retweet"
+    query = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"Atomic Fizz\") filter:media min_faves:5 -is:retweet"
     try:
         tweets = client.search_recent_tweets(query=query, max_results=20)
         for tweet in tweets.data or []:
-            if random.random() > 0.75:  # Even less aggressive for realism
+            if random.random() > 0.75:
                 try:
                     client.retweet(tweet.id)
-                    logging.info(f"Retweeted {tweet.id}")
-                    time.sleep(random.randint(10, 20))
-                except Exception as e:
-                    logging.warning(f"Retweet failed: {e}")
+                except Exception:
+                    pass
     except Exception as e:
         logging.error(f"Search failed: {e}")
 
 def overseer_diagnostic():
-    diag = f"Static crackles... Overseer diagnostic: ONLINE. {random.choice(LORES)} Wasteland stable. Dwellers: Engage. {GAME_LINK} ☢️🔥"
+    diag = f"Static crackles... Overseer diagnostic: ONLINE. {random.choice(LORES)} {GAME_LINK} ☢️🔥"
     try:
         client.create_tweet(text=diag)
-        logging.info("Daily diagnostic posted.")
     except Exception as e:
         logging.error(f"Diagnostic failed: {e}")
 
-# === Scheduler - Maxed for Frequency & Variety ===
+# ------------------------------------------------------------
+# SCHEDULER
+# ------------------------------------------------------------
 scheduler = BackgroundScheduler()
-scheduler.add_job(overseer_broadcast, 'interval', minutes=random.randint(120, 240))  # 2-4 hours, randomized
+scheduler.add_job(overseer_broadcast, 'interval', minutes=random.randint(120, 240))
 scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(15, 30))
 scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1)
-scheduler.add_job(overseer_diagnostic, 'cron', hour=8)  # Daily health check
+scheduler.add_job(overseer_diagnostic, 'cron', hour=8)
 scheduler.start()
 
-# Activation - With flair
-logging.info("VAULT-TEC OVERSEER AI ONLINE ☢️🔥 - MAXED & UNSTOPPABLE. FEEL THE REALISM.")
+# ------------------------------------------------------------
+# ACTIVATION
+# ------------------------------------------------------------
+logging.info("VAULT-TEC OVERSEER AI ONLINE ☢️🔥")
 try:
-    activation_msg = f"Static crackles... Overseer fully awakened. Atomic Fizz wasteland pulses with life. Dwellers, the reclamation begins: {GAME_LINK} 🟢🔥 {random.choice(LORES)}"
+    activation_msg = (
+        f"Static crackles... Overseer fully awakened. "
+        f"Atomic Fizz wasteland pulses with life. {GAME_LINK} 🟢🔥 {random.choice(LORES)}"
+    )
     client.create_tweet(text=activation_msg)
-except Exception as e:
-    logging.warning(f"Activation post failed: {e}")
+except Exception:
+    pass
 
-# Main loop - Immortal
-try:
-    while True:
-        time.sleep(60)
-except (KeyboardInterrupt, SystemExit):
-    scheduler.shutdown()
-    logging.info("Overseer powering down. The wasteland endures.")
+# ------------------------------------------------------------
+# MAIN LOOP
+# ------------------------------------------------------------
+if __name__ == "__main__":
+    try:
+        while True:
+            time.sleep(60)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+        logging.info("Overseer powering down. The wasteland endures.")
