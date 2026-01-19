@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: overseer-bot
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python overseer_bot.py
+    envVars:
+      - key: CONSUMER_KEY
+        sync: false
+      - key: CONSUMER_SECRET
+        sync: false
+      - key: ACCESS_TOKEN
+        sync: false
+      - key: ACCESS_SECRET
+        sync: false
+      - key: BEARER_TOKEN
+        sync: false
+      - key: HUGGING_FACE_TOKEN
+        sync: false
