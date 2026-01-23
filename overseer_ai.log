@@ -1,4 +1,0 @@
-2025-12-18 16:56:57,294 - VAULT-TEC OVERSEER LOG - WARNING - Activation post failed: 403 Forbidden
-453 - You currently have access to a subset of X API V2 endpoints and limited v1.1 endpoints (e.g. media post, oauth) only. If you need access to this endpoint, you may need a different access level. You can learn more here: https://developer.x.com/en/portal/product
-2025-12-18 17:08:57,802 - VAULT-TEC OVERSEER LOG - ERROR - Mention fetch error: 403 Forbidden
-453 - You currently have access to a subset of X API V2 endpoints and limited v1.1 endpoints (e.g. media post, oauth) only. If you need access to this endpoint, you may need a different access level. You can learn more here: https://developer.x.com/en/portal/product

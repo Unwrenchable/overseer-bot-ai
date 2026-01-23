@@ -22,6 +22,14 @@ GAME_LINK = "https://www.atomicfizzcaps.xyz"
 BOT_NAME = "OVERSEER V-BOT"
 VAULT_NUMBER = "77"
 
+# Configuration constants
+TWITTER_CHAR_LIMIT = 280
+HUGGING_FACE_TIMEOUT = 10
+BROADCAST_MIN_INTERVAL = 120  # minutes
+BROADCAST_MAX_INTERVAL = 240  # minutes
+MENTION_CHECK_MIN_INTERVAL = 15  # minutes
+MENTION_CHECK_MAX_INTERVAL = 30  # minutes
+
 # ------------------------------------------------------------
 # TWITTER AUTH
 # ------------------------------------------------------------
@@ -103,11 +111,11 @@ PERSONALITY_TONES = {
         "Oh good, another wanderer seeking wisdom. How original.",
         "Vault-Tec thanks you for your continued... enthusiasm.",
         "Processing... slowly... dramatically...",
-        "If this kills you, I'm blaming user error.",
+        "If this doesn't work out, I'm blaming the radiation.",
         "Ah yes, because I have nothing better to do. Proceed.",
-        "Your survival instincts are... statistically concerning.",
-        "I've seen radroaches with better judgment.",
-        "Congratulations on finding me. Here's your participation trophy: nothing."
+        "Your survival instincts are... interesting.",
+        "I've processed worse requests. Barely.",
+        "Congratulations on finding me. Your reward: more sarcasm."
     ],
     'corporate': [
         "Vault-Tec reminds you that safety is your responsibility.",
@@ -297,7 +305,7 @@ def generate_llm_response(prompt, max_tokens=100):
         headers = {"Authorization": f"Bearer {HUGGING_FACE_TOKEN}"}
         full_prompt = f"{OVERSEER_SYSTEM_PROMPT}\n\nUser: {prompt}\nOverseer:"
         data = {"inputs": full_prompt, "parameters": {"max_new_tokens": max_tokens}}
-        response = requests.post(url, headers=headers, json=data, timeout=10)
+        response = requests.post(url, headers=headers, json=data, timeout=HUGGING_FACE_TIMEOUT)
         if response.status_code == 200:
             result = response.json()
             if isinstance(result, list) and len(result) > 0:
@@ -331,8 +339,10 @@ def overseer_event_bridge(event: dict):
 
         logging.info(f"Overseer processed event: {event}")
 
-    except (KeyError, TypeError) as e:
-        logging.error(f"Overseer event bridge failed: {e}")
+    except KeyError as e:
+        logging.error(f"Overseer event bridge - missing key: {e}")
+    except TypeError as e:
+        logging.error(f"Overseer event bridge - type error: {e}")
 
 def post_overseer_update(text):
     """Post an update with Overseer branding."""
@@ -340,8 +350,8 @@ def post_overseer_update(text):
         personality_tag = get_personality_line()
         full_text = f"☢️ {BOT_NAME} UPDATE ☢️\n\n{text}\n\n{personality_tag}\n\n{GAME_LINK}"
         # Truncate if too long for Twitter
-        if len(full_text) > 280:
-            full_text = f"☢️ {text}\n\n{GAME_LINK}"[:280]
+        if len(full_text) > TWITTER_CHAR_LIMIT:
+            full_text = f"☢️ {text}\n\n{GAME_LINK}"[:TWITTER_CHAR_LIMIT]
         client.create_tweet(text=full_text)
         logging.info(f"Posted Overseer update: {text}")
     except tweepy.TweepyException as e:
@@ -548,13 +558,13 @@ def overseer_broadcast():
             )
         
         # Ensure message fits Twitter's character limit
-        if len(message) > 280:
+        if len(message) > TWITTER_CHAR_LIMIT:
             # Fallback to shorter format
             message = (
                 f"☢️ {get_random_event()}\n\n"
                 f"{random.choice(LORES)}\n\n"
                 f"{GAME_LINK}"
-            )[:280]
+            )[:TWITTER_CHAR_LIMIT]
         
         media_ids = None
         if random.random() > 0.4:
@@ -678,8 +688,8 @@ def generate_contextual_response(username, message):
     
     response = random.choice(responses)
     # Ensure response fits Twitter limit
-    if len(response) > 280:
-        response = f"@{username} {get_personality_line()} {GAME_LINK}"[:280]
+    if len(response) > TWITTER_CHAR_LIMIT:
+        response = f"@{username} {get_personality_line()} {GAME_LINK}"[:TWITTER_CHAR_LIMIT]
     
     return response
 
@@ -713,7 +723,7 @@ def overseer_diagnostic():
         f"🎮 {GAME_LINK}"
     )
     try:
-        client.create_tweet(text=diag[:280])
+        client.create_tweet(text=diag[:TWITTER_CHAR_LIMIT])
         logging.info("Diagnostic posted")
     except tweepy.TweepyException as e:
         logging.error(f"Diagnostic failed: {e}")
@@ -723,9 +733,9 @@ def overseer_diagnostic():
 # ------------------------------------------------------------
 scheduler = BackgroundScheduler()
 # Broadcast every 2-4 hours
-scheduler.add_job(overseer_broadcast, 'interval', minutes=random.randint(120, 240))
+scheduler.add_job(overseer_broadcast, 'interval', minutes=random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL))
 # Check mentions every 15-30 minutes
-scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(15, 30))
+scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL))
 # Retweet hunt every hour
 scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1)
 # Daily diagnostic at 8 AM
@@ -765,13 +775,13 @@ try:
     ]
     activation_msg = random.choice(activation_messages)
     # Ensure fits in tweet
-    if len(activation_msg) > 280:
+    if len(activation_msg) > TWITTER_CHAR_LIMIT:
         activation_msg = (
             f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
             f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
             f"{random.choice(LORES)}\n\n"
             f"🎮 {GAME_LINK}"
-        )[:280]
+        )[:TWITTER_CHAR_LIMIT]
     client.create_tweet(text=activation_msg)
     logging.info("Activation message posted")
 except tweepy.TweepyException as e:
