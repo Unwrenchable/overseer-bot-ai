@@ -38,6 +38,7 @@ ENV/
 
 # Local data
 processed_mentions.json
+9dttt_processed_mentions.json
 
 # Media folder (keep folder but ignore contents)
 media/*
