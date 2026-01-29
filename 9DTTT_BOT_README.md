@@ -79,6 +79,29 @@ The bot will:
 
 The bot includes a Flask webhook endpoint at `/9dttt-event` that can receive game events.
 
+**Note:** The Flask app is defined in the bot but not automatically started. You have two options:
+
+**Option A: Run Flask separately (recommended for production)**
+```bash
+# Install gunicorn
+pip install gunicorn
+
+# Run the Flask app on port 5000
+gunicorn -w 4 -b 0.0.0.0:5000 "9dttt_bot:app"
+
+# Run the bot separately
+python3 9dttt_bot.py
+```
+
+**Option B: Modify the bot to run Flask in a thread**
+Add this code before the main loop in `9dttt_bot.py`:
+```python
+import threading
+flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000))
+flask_thread.daemon = True
+flask_thread.start()
+```
+
 To use this feature:
 1. Deploy the bot to a server with a public URL
 2. Configure your game to send POST requests to `https://your-server.com/9dttt-event`

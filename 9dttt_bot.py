@@ -39,6 +39,18 @@ ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
 
+# Validate required credentials
+required_credentials = {
+    'CONSUMER_KEY': CONSUMER_KEY,
+    'CONSUMER_SECRET': CONSUMER_SECRET,
+    'ACCESS_TOKEN': ACCESS_TOKEN,
+    'ACCESS_SECRET': ACCESS_SECRET,
+    'BEARER_TOKEN': BEARER_TOKEN
+}
+missing_credentials = [key for key, value in required_credentials.items() if not value]
+if missing_credentials:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing_credentials)}")
+
 client = tweepy.Client(
     consumer_key=CONSUMER_KEY,
     consumer_secret=CONSUMER_SECRET,
@@ -60,6 +72,8 @@ app = Flask(__name__)
 
 @app.post("/9dttt-event")
 def game_event():
+    if not request.json:
+        return {"error": "Invalid request: JSON body required"}, 400
     event = request.json
     game_event_bridge(event)
     return {"ok": True}
@@ -77,10 +91,15 @@ def load_json_set(filename):
     return set()
 
 def save_json_set(data, filename):
-    with open(filename, 'w') as f:
-        json.dump(list(data), f)
+    try:
+        with open(filename, 'w') as f:
+            json.dump(list(data), f)
+    except (IOError, OSError) as e:
+        logging.error(f"Failed to save {filename}: {e}")
 
 def get_random_media_id():
+    if not os.path.exists(MEDIA_FOLDER):
+        return None
     media_files = [
         f for f in os.listdir(MEDIA_FOLDER)
         if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4'))
@@ -303,7 +322,10 @@ def post_update(text):
         full_text = f"🎮 {BOT_NAME} UPDATE 🎮\n\n{text}\n\n{personality_tag}\n\n{GAME_LINK}"
         # Truncate if too long for Twitter
         if len(full_text) > TWITTER_CHAR_LIMIT:
-            full_text = f"🎮 {text}\n\n{GAME_LINK}"[:TWITTER_CHAR_LIMIT]
+            # Ensure game link is preserved by truncating text and rebuilding
+            max_text_length = TWITTER_CHAR_LIMIT - len(f"🎮 \n\n{GAME_LINK}")
+            truncated_text = text[:max_text_length]
+            full_text = f"🎮 {truncated_text}\n\n{GAME_LINK}"
         client.create_tweet(text=full_text)
         logging.info(f"Posted update: {text}")
     except tweepy.TweepyException as e:
@@ -470,11 +492,10 @@ def bot_broadcast():
         
         # Ensure message fits Twitter's character limit
         if len(message) > TWITTER_CHAR_LIMIT:
-            message = (
-                f"🎮 {get_random_event()}\n\n"
-                f"{random.choice(MOTIVATIONAL)}\n\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
+            # Preserve game link by truncating text and rebuilding
+            max_text_length = TWITTER_CHAR_LIMIT - len(f"🎮 \n\n{GAME_LINK}")
+            truncated_text = get_random_event()[:max_text_length]
+            message = f"🎮 {truncated_text}\n\n{GAME_LINK}"
         
         media_ids = None
         if random.random() > 0.4:
@@ -597,9 +618,11 @@ def generate_contextual_response(username, message):
         ]
     
     response = random.choice(responses)
-    # Ensure response fits Twitter limit
+    # Ensure response fits Twitter limit and preserve game link
     if len(response) > TWITTER_CHAR_LIMIT:
-        response = f"@{username} {get_personality_line()} {GAME_LINK}"[:TWITTER_CHAR_LIMIT]
+        max_length = TWITTER_CHAR_LIMIT - len(f"@{username} \n\n{GAME_LINK}")
+        personality = get_personality_line()[:max_length]
+        response = f"@{username} {personality}\n\n{GAME_LINK}"
     
     return response
 
@@ -683,14 +706,16 @@ try:
         )
     ]
     activation_msg = random.choice(activation_messages)
-    # Ensure fits in tweet
+    # Ensure fits in tweet and preserve game link
     if len(activation_msg) > TWITTER_CHAR_LIMIT:
+        max_length = TWITTER_CHAR_LIMIT - len(f"🎮 {BOT_NAME} ONLINE 🎮\n\n\n\n🕹️ {GAME_LINK}")
+        motivation = random.choice(MOTIVATIONAL)[:max_length]
         activation_msg = (
             f"🎮 {BOT_NAME} ONLINE 🎮\n\n"
             f"9D Grid Active\n"
-            f"{random.choice(MOTIVATIONAL)}\n\n"
+            f"{motivation}\n\n"
             f"🕹️ {GAME_LINK}"
-        )[:TWITTER_CHAR_LIMIT]
+        )
     client.create_tweet(text=activation_msg)
     logging.info("Activation message posted")
 except tweepy.TweepyException as e:
@@ -702,8 +727,11 @@ except tweepy.TweepyException as e:
 if __name__ == "__main__":
     try:
         logging.info(f"{BOT_NAME} entering main loop. Monitoring for strategy challenges...")
+        # Note: Flask webhook endpoint is defined but not started here.
+        # To use webhooks, run Flask separately with: flask run or gunicorn
+        # Or run Flask in a separate thread if webhook integration is needed.
         while True:
-            time.sleep(60)
+            time.sleep(300)  # Sleep for 5 minutes between checks
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         logging.info(f"{BOT_NAME} powering down. The grid awaits your return.")
