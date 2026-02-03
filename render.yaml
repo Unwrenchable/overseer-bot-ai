@@ -19,3 +19,11 @@ services:
         sync: false
       - key: HUGGING_FACE_TOKEN
         sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_USERNAME
+        sync: false

@@ -8,6 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
+import redis
 
 # ------------------------------------------------------------
 # CONFIG & LOGGING
@@ -55,6 +56,33 @@ auth_v1 = tweepy.OAuth1UserHandler(
 api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
 
 # ------------------------------------------------------------
+# REDIS CLIENT
+# ------------------------------------------------------------
+REDIS_HOST = os.getenv('REDIS_HOST')
+REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+REDIS_USERNAME = os.getenv('REDIS_USERNAME', 'default')
+
+redis_client = None
+if REDIS_HOST and REDIS_PASSWORD:
+    try:
+        redis_client = redis.Redis(
+            host=REDIS_HOST,
+            port=int(REDIS_PORT),
+            username=REDIS_USERNAME,
+            password=REDIS_PASSWORD,
+            decode_responses=True,
+            socket_connect_timeout=5
+        )
+        redis_client.ping()
+        logging.info("Redis connection established successfully")
+    except Exception as e:
+        logging.warning(f"Redis connection failed: {e}. Falling back to file-based storage.")
+        redis_client = None
+else:
+    logging.warning("Redis credentials not provided. Using file-based storage.")
+
+# ------------------------------------------------------------
 # FLASK APP FOR WALLET EVENTS
 # ------------------------------------------------------------
 app = Flask(__name__)
@@ -72,14 +100,46 @@ PROCESSED_MENTIONS_FILE = "processed_mentions.json"
 MEDIA_FOLDER = "media/"
 
 def load_json_set(filename):
+    """Load a set from Redis (if available) or local file."""
+    redis_key = f"overseer:{filename}"
+    
+    # Try Redis first
+    if redis_client:
+        try:
+            members = redis_client.smembers(redis_key)
+            if members:
+                return set(members)
+            # If Redis is available but key doesn't exist, return empty set
+            return set()
+        except Exception as e:
+            logging.warning(f"Redis read failed: {e}. Falling back to file.")
+    
+    # Fallback to file-based storage
     if os.path.exists(filename):
         with open(filename, 'r') as f:
             return set(json.load(f))
     return set()
 
 def save_json_set(data, filename):
-    with open(filename, 'w') as f:
-        json.dump(list(data), f)
+    """Save a set to Redis (if available) and/or local file."""
+    redis_key = f"overseer:{filename}"
+    
+    # Try Redis first
+    if redis_client:
+        try:
+            # Clear existing set and add all members
+            redis_client.delete(redis_key)
+            if data:
+                redis_client.sadd(redis_key, *data)
+            logging.debug(f"Saved {len(data)} items to Redis key: {redis_key}")
+        except Exception as e:
+            logging.warning(f"Redis write failed: {e}. Saving to file instead.")
+            # Fall through to file save on error
+    
+    # Always save to file as backup (or if Redis is not available)
+    if not redis_client or True:  # Always keep file backup for safety
+        with open(filename, 'w') as f:
+            json.dump(list(data), f)
 
 def get_random_media_id():
     media_files = [
