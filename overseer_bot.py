@@ -107,10 +107,8 @@ def load_json_set(filename):
     if redis_client:
         try:
             members = redis_client.smembers(redis_key)
-            if members:
-                return set(members)
-            # If Redis is available but key doesn't exist, return empty set
-            return set()
+            # Return members if any exist, otherwise return empty set
+            return set(members) if members else set()
         except Exception as e:
             logging.warning(f"Redis read failed: {e}. Falling back to file.")
     
@@ -133,13 +131,11 @@ def save_json_set(data, filename):
                 redis_client.sadd(redis_key, *data)
             logging.debug(f"Saved {len(data)} items to Redis key: {redis_key}")
         except Exception as e:
-            logging.warning(f"Redis write failed: {e}. Saving to file instead.")
-            # Fall through to file save on error
+            logging.warning(f"Redis write failed: {e}")
     
-    # Always save to file as backup (or if Redis is not available)
-    if not redis_client or True:  # Always keep file backup for safety
-        with open(filename, 'w') as f:
-            json.dump(list(data), f)
+    # Always save to file as backup (dual-write strategy for reliability)
+    with open(filename, 'w') as f:
+        json.dump(list(data), f)
 
 def get_random_media_id():
     media_files = [
