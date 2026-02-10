@@ -48,6 +48,14 @@ HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'vault77secure')
 
+# Security warning for default credentials
+if ADMIN_PASSWORD == 'vault77secure':
+    logging.warning("="*60)
+    logging.warning("⚠️  SECURITY WARNING: Using default admin password!")
+    logging.warning("⚠️  Change ADMIN_PASSWORD in production immediately!")
+    logging.warning("⚠️  Generate secure password: openssl rand -base64 32")
+    logging.warning("="*60)
+
 # Webhook API key for external services (like Token-scalper)
 WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required
 
@@ -115,6 +123,13 @@ def get_token_price_coingecko(symbol):
     """
     Fetch token price from CoinGecko API (fallback when exchanges are geo-blocked).
     CoinGecko has no geographic restrictions and provides reliable price data.
+    
+    Note: CoinGecko simple API has limitations:
+    - high_24h and low_24h are not available (returns None)
+    - Downstream consumers should handle None values for these fields
+    
+    Returns:
+        dict: Price data with 'source': 'coingecko' or None on error
     """
     try:
         coin_id = COINGECKO_MAPPING.get(symbol)
@@ -153,6 +168,28 @@ def get_token_price_coingecko(symbol):
         logging.error(f"Failed to fetch price from CoinGecko for {symbol}: {e}")
         return None
 
+def is_geo_restriction_error(exception):
+    """
+    Check if an exception indicates a geographic restriction.
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        bool: True if the error is due to geographic restrictions
+    """
+    error_msg = str(exception).lower()
+    geo_indicators = [
+        '451',  # HTTP 451 - Unavailable For Legal Reasons
+        'restricted location',
+        'unavailable from a restricted',
+        'service unavailable from',
+        'not available in your region',
+        'geo',
+        'geographic restriction'
+    ]
+    return any(indicator in error_msg for indicator in geo_indicators)
+
 def get_token_price(symbol, exchange_name='binance'):
     """
     Fetch current token price from exchange with CoinGecko fallback.
@@ -171,9 +208,8 @@ def get_token_price(symbol, exchange_name='binance'):
             'source': exchange_name
         }
     except Exception as e:
-        error_msg = str(e).lower()
-        # Check if it's a geographic restriction error (451 or "restricted location")
-        if '451' in error_msg or 'restricted location' in error_msg or 'unavailable from a restricted' in error_msg:
+        # Check if it's a geographic restriction error
+        if is_geo_restriction_error(e):
             logging.warning(f"{exchange_name} is geo-blocked for {symbol}, falling back to CoinGecko...")
             return get_token_price_coingecko(symbol)
         else:
