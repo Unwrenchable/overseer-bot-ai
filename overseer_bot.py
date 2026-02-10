@@ -8,6 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
+from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
 import threading
@@ -42,6 +43,13 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
+
+# Admin authentication credentials
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'vault77secure')
+
+# Webhook API key for external services (like Token-scalper)
+WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required
 
 client = tweepy.Client(
     consumer_key=CONSUMER_KEY,
@@ -275,9 +283,42 @@ def post_market_summary():
 # FLASK APP FOR WALLET EVENTS
 # ------------------------------------------------------------
 app = Flask(__name__)
+auth = HTTPBasicAuth()
+
+@auth.verify_password
+def verify_password(username, password):
+    """Verify admin credentials for monitoring UI access"""
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        return username
+    return None
+
+def verify_webhook_auth():
+    """
+    Verify webhook authentication via API key in Authorization header.
+    Returns True if authentication is valid or not required.
+    Returns False if authentication is required but invalid.
+    """
+    # If no webhook API key is configured, allow access (backward compatibility)
+    if not WEBHOOK_API_KEY:
+        return True
+    
+    # Check for Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    
+    # Support both "Bearer TOKEN" and just "TOKEN" formats
+    if auth_header.startswith('Bearer '):
+        provided_key = auth_header[7:]  # Remove "Bearer " prefix
+    else:
+        provided_key = auth_header
+    
+    return provided_key == WEBHOOK_API_KEY
 
 @app.post("/overseer-event")
 def overseer_event():
+    """Webhook endpoint for overseer events"""
+    if not verify_webhook_auth():
+        return {"ok": False, "error": "Unauthorized"}, 401
+    
     event = request.json
     overseer_event_bridge(event)
     return {"ok": True}
@@ -285,6 +326,9 @@ def overseer_event():
 @app.post("/token-scalper-alert")
 def token_scalper_alert():
     """Webhook endpoint for Token-scalper bot alerts"""
+    if not verify_webhook_auth():
+        return {"ok": False, "error": "Unauthorized"}, 401
+    
     try:
         alert_data = request.json
         alert_type = alert_data.get('type', 'unknown')
@@ -324,6 +368,7 @@ def add_activity(activity_type, description):
             RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
 
 @app.route("/")
+@auth.login_required
 def monitoring_dashboard():
     """Main monitoring dashboard"""
     from flask import render_template_string
@@ -565,6 +610,7 @@ def monitoring_dashboard():
     )
 
 @app.route("/api/status")
+@auth.login_required
 def api_status():
     """JSON endpoint for bot status"""
     uptime = datetime.now() - BOT_START_TIME
@@ -579,6 +625,7 @@ def api_status():
     }
 
 @app.route("/api/prices")
+@auth.login_required
 def api_prices():
     """JSON endpoint for current prices"""
     price_cache = load_price_cache()
@@ -588,6 +635,7 @@ def api_prices():
     }
 
 @app.route("/api/jobs")
+@auth.login_required
 def api_jobs():
     """JSON endpoint for scheduler jobs"""
     jobs_info = []
@@ -601,6 +649,7 @@ def api_jobs():
     return {"jobs": jobs_info}
 
 @app.route("/api/activities")
+@auth.login_required
 def api_activities():
     """JSON endpoint for recent activities"""
     with RECENT_ACTIVITIES_LOCK:
