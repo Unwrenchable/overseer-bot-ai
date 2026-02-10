@@ -104,8 +104,60 @@ def save_price_cache(cache):
     with open(PRICE_CACHE_FILE, 'w') as f:
         json.dump(cache, f)
 
+# CoinGecko API mapping for tokens (no geo-restrictions, free tier)
+COINGECKO_MAPPING = {
+    'SOL/USDT': 'solana',
+    'BTC/USDT': 'bitcoin',
+    'ETH/USDT': 'ethereum'
+}
+
+def get_token_price_coingecko(symbol):
+    """
+    Fetch token price from CoinGecko API (fallback when exchanges are geo-blocked).
+    CoinGecko has no geographic restrictions and provides reliable price data.
+    """
+    try:
+        coin_id = COINGECKO_MAPPING.get(symbol)
+        if not coin_id:
+            logging.warning(f"No CoinGecko mapping for {symbol}")
+            return None
+        
+        url = f"https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            'ids': coin_id,
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true',
+            'include_24hr_vol': 'true'
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if coin_id not in data:
+            logging.error(f"CoinGecko returned no data for {coin_id}")
+            return None
+        
+        coin_data = data[coin_id]
+        
+        return {
+            'price': coin_data.get('usd', 0),
+            'high_24h': None,  # CoinGecko simple API doesn't provide this
+            'low_24h': None,   # CoinGecko simple API doesn't provide this
+            'volume_24h': coin_data.get('usd_24h_vol', 0),
+            'change_24h': coin_data.get('usd_24h_change', 0),
+            'timestamp': time.time(),
+            'source': 'coingecko'
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch price from CoinGecko for {symbol}: {e}")
+        return None
+
 def get_token_price(symbol, exchange_name='binance'):
-    """Fetch current token price from exchange."""
+    """
+    Fetch current token price from exchange with CoinGecko fallback.
+    If the exchange is geo-blocked or fails, automatically falls back to CoinGecko.
+    """
     try:
         exchange = getattr(ccxt, exchange_name)()
         ticker = exchange.fetch_ticker(symbol)
@@ -115,11 +167,20 @@ def get_token_price(symbol, exchange_name='binance'):
             'low_24h': ticker['low'],
             'volume_24h': ticker['quoteVolume'],
             'change_24h': ticker['percentage'],
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'source': exchange_name
         }
     except Exception as e:
-        logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
-        return None
+        error_msg = str(e).lower()
+        # Check if it's a geographic restriction error (451 or "restricted location")
+        if '451' in error_msg or 'restricted location' in error_msg or 'unavailable from a restricted' in error_msg:
+            logging.warning(f"{exchange_name} is geo-blocked for {symbol}, falling back to CoinGecko...")
+            return get_token_price_coingecko(symbol)
+        else:
+            logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
+            # Try CoinGecko as fallback for any error
+            logging.info(f"Attempting CoinGecko fallback for {symbol}...")
+            return get_token_price_coingecko(symbol)
 
 def calculate_price_change(old_price, new_price):
     """Calculate percentage change between two prices."""
