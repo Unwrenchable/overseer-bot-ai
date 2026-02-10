@@ -40,13 +40,13 @@ export WEBHOOK_API_KEY=$(openssl rand -hex 32)
 echo "WEBHOOK_API_KEY=$WEBHOOK_API_KEY"
 ```
 
-### 3. Edit YOUR .env File (Not .env.example!)
+### 3. Edit Your .env File (Not .env.example!)
 
 ```bash
 nano .env  # or use your preferred editor
 ```
 
-Add your generated values to **YOUR .env file**:
+Add your generated values to **your .env file**:
 
 ```env
 # Admin authentication
