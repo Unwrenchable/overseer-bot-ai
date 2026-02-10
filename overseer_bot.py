@@ -308,18 +308,20 @@ def token_scalper_alert():
 # ------------------------------------------------------------
 BOT_START_TIME = datetime.now()
 RECENT_ACTIVITIES = []
+RECENT_ACTIVITIES_LOCK = threading.Lock()
 
 def add_activity(activity_type, description):
-    """Track bot activities for monitoring UI"""
+    """Track bot activities for monitoring UI (thread-safe)"""
     global RECENT_ACTIVITIES
-    RECENT_ACTIVITIES.append({
-        'timestamp': datetime.now().isoformat(),
-        'type': activity_type,
-        'description': description
-    })
-    # Keep only last 50 activities
-    if len(RECENT_ACTIVITIES) > 50:
-        RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
+    with RECENT_ACTIVITIES_LOCK:
+        RECENT_ACTIVITIES.append({
+            'timestamp': datetime.now().isoformat(),
+            'type': activity_type,
+            'description': description
+        })
+        # Keep only last 50 activities
+        if len(RECENT_ACTIVITIES) > 50:
+            RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
 
 @app.route("/")
 def monitoring_dashboard():
@@ -548,6 +550,9 @@ def monitoring_dashboard():
     </html>
     '''
     
+    with RECENT_ACTIVITIES_LOCK:
+        activities_copy = list(reversed(RECENT_ACTIVITIES))
+    
     return render_template_string(
         template,
         uptime=uptime_str,
@@ -556,7 +561,7 @@ def monitoring_dashboard():
         safety_cache_count=len(TOKEN_SAFETY_CACHE),
         price_data=price_cache,
         jobs=jobs_info,
-        activities=list(reversed(RECENT_ACTIVITIES))
+        activities=activities_copy
     )
 
 @app.route("/api/status")
@@ -598,7 +603,9 @@ def api_jobs():
 @app.route("/api/activities")
 def api_activities():
     """JSON endpoint for recent activities"""
-    return {"activities": list(reversed(RECENT_ACTIVITIES))}
+    with RECENT_ACTIVITIES_LOCK:
+        activities_copy = list(reversed(RECENT_ACTIVITIES))
+    return {"activities": activities_copy}
 
 # ------------------------------------------------------------
 # TOKEN SAFETY & ANALYSIS MODULE
@@ -1635,8 +1642,24 @@ except tweepy.TweepyException as e:
 # FLASK APP THREAD
 # ------------------------------------------------------------
 def run_flask_app():
-    """Run Flask app in a separate thread."""
+    """
+    Run Flask app in a separate thread.
+    
+    SECURITY WARNING: This uses Flask's development server which is NOT suitable
+    for production deployments. For production, use a production WSGI server like
+    Gunicorn or uWSGI.
+    
+    The server is bound to 0.0.0.0 making it accessible from any network interface.
+    For production deployments, consider:
+    1. Using HTTPS (not HTTP)
+    2. Adding authentication middleware
+    3. Binding to 127.0.0.1 for local-only access
+    4. Using a production WSGI server (Gunicorn, uWSGI)
+    5. Placing behind a reverse proxy (nginx, Apache)
+    """
     port = int(os.getenv('PORT', 5000))
+    # WARNING: debug=False and use_reloader=False are set but this is still
+    # the development server. Use Gunicorn or uWSGI for production.
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # Start Flask in a separate thread

@@ -230,7 +230,8 @@ Any pair format supported by the exchange (BTC/USD, ETH/BTC, etc.).
 ### Access the Dashboard
 The bot includes a web-based monitoring dashboard for manual oversight:
 
-**URL**: `http://your-server:5000/` (default port 5000, or set via `PORT` environment variable)
+**Development**: `http://localhost:5000/` (default port 5000, or set via `PORT` environment variable)
+**Production**: Must use HTTPS with authentication (see Security Notes below)
 
 ### Dashboard Features
 1. **Real-Time Status**
@@ -274,10 +275,28 @@ The bot includes a web-based monitoring dashboard for manual oversight:
 - **Render.com**: Automatically available at your app's URL
 
 ### Security Notes
-- The dashboard is read-only (no controls to post/modify)
-- No authentication required (add if needed for production)
-- Shows cached data only (no sensitive credentials)
-- API endpoints return JSON for integration with other tools
+⚠️ **IMPORTANT: Production deployments require additional security measures**
+
+**Current State (Development)**:
+- Dashboard is read-only (no controls to post/modify)
+- No authentication implemented
+- Uses Flask development server (not production-ready)
+- Binds to all interfaces (0.0.0.0)
+- HTTP only (no encryption)
+
+**Required for Production**:
+1. **Add Authentication** - HTTP Basic Auth minimum, OAuth preferred
+2. **Enable HTTPS** - Use reverse proxy with SSL/TLS certificates
+3. **Production Server** - Replace Flask dev server with Gunicorn/uWSGI
+4. **Firewall Rules** - Restrict access to trusted IPs
+5. **Rate Limiting** - Prevent abuse
+
+**Data Exposure**:
+- Shows: Bot activities, price data, timestamps, scheduler jobs
+- Does NOT show: Twitter credentials, API keys, secrets
+- Consider operational data sensitive
+
+See `UI_GUIDE.md` for detailed security setup instructions.
 
 ## 📝 Key Technical Decisions
 
