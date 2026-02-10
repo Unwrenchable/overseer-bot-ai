@@ -137,14 +137,31 @@ def check_price_alerts():
             old_price = price_cache[cache_key]['price']
             price_change = calculate_price_change(old_price, current_price)
             
-            # Check for significant price movements
-            if abs(price_change) >= config['alert_threshold_up'] if price_change > 0 else config['alert_threshold_down']:
+            # Check for significant price movements with correct threshold logic
+            should_alert = False
+            if price_change > 0 and price_change >= config['alert_threshold_up']:
+                should_alert = True
+            elif price_change < 0 and abs(price_change) >= config['alert_threshold_down']:
+                should_alert = True
+            
+            if should_alert:
                 post_price_alert(symbol, current_data, price_change)
         
         # Update cache
         price_cache[cache_key] = current_data
     
     save_price_cache(price_cache)
+
+def create_fallback_alert_message(token_name, price_change, price, game_link):
+    """Create a guaranteed short fallback alert message."""
+    direction = "SURGE" if price_change > 0 else "DIP"
+    emoji = "📈" if price_change > 0 else "📉"
+    return (
+        f"🔔 ${token_name} {direction}: {price_change:+.2f}% {emoji}\n"
+        f"Price: ${price:.2f}\n\n"
+        f"The wasteland economy shifts.\n\n"
+        f"{game_link}"
+    )
 
 def post_price_alert(symbol, price_data, price_change):
     """Post a price alert to Twitter with Overseer personality."""
@@ -182,14 +199,11 @@ def post_price_alert(symbol, price_data, price_change):
         
         message = random.choice(alert_messages)
         
-        # Ensure message fits Twitter limit
+        # Ensure message fits Twitter limit with proper fallback
         if len(message) > TWITTER_CHAR_LIMIT:
-            message = (
-                f"🔔 ${token_name} {direction}: {price_change:+.2f}%\n"
-                f"Price: ${price_data['price']:.2f}\n\n"
-                f"{personality_line}\n\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
+            message = create_fallback_alert_message(
+                token_name, price_change, price_data['price'], GAME_LINK
+            )
         
         client.create_tweet(text=message)
         logging.info(f"Posted price alert for {symbol}: {price_change:+.2f}%")
@@ -218,13 +232,25 @@ def post_market_summary():
             "FizzCo Industries: Making caps sparkle."
         ])
         
+        # Build message with length checking
         message = "\n".join(summary_lines) + f"\n\n{personality}\n\n🎮 {GAME_LINK}"
         
-        # Ensure fits in tweet
+        # Truncate if needed by removing token lines from the end
         if len(message) > TWITTER_CHAR_LIMIT:
-            message = "\n".join(summary_lines[:4]) + f"\n\n{personality}\n\n{GAME_LINK}"
+            # Keep header and build with fewer tokens
+            truncated_lines = [summary_lines[0]]
+            footer = f"\n\n{personality}\n\n🎮 {GAME_LINK}"
+            
+            for line in summary_lines[1:]:
+                test_message = "\n".join(truncated_lines + [line]) + footer
+                if len(test_message) <= TWITTER_CHAR_LIMIT:
+                    truncated_lines.append(line)
+                else:
+                    break
+            
+            message = "\n".join(truncated_lines) + footer
         
-        client.create_tweet(text=message[:TWITTER_CHAR_LIMIT])
+        client.create_tweet(text=message)
         logging.info("Posted market summary")
         
     except tweepy.TweepyException as e:
