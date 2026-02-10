@@ -4,3 +4,7 @@ requests>=2.31.0
 flask>=3.0.0
 flask-httpauth>=4.8.0
 ccxt>=4.2.0
+solana>=0.30.0
+solders>=0.18.0
+base58>=2.1.1
+web3>=6.11.0

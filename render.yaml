@@ -19,3 +19,21 @@ services:
         sync: false
       - key: HUGGING_FACE_TOKEN
         sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: WEBHOOK_API_KEY
+        sync: false
+      - key: ENABLE_WALLET_UI
+        value: "true"
+      - key: SOLANA_PRIVATE_KEY
+        sync: false
+      - key: SOLANA_RPC_ENDPOINT
+        value: "https://api.mainnet-beta.solana.com"
+      - key: ETH_PRIVATE_KEY
+        sync: false
+      - key: ETH_RPC_ENDPOINT
+        value: "https://eth.public-rpc.com"
+      - key: BSC_RPC_ENDPOINT
+        value: "https://bsc-dataseed1.binance.org"
