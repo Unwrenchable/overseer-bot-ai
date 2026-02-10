@@ -39,6 +39,10 @@ ENV/
 # Local data
 processed_mentions.json
 
+# Token scalper cache files
+price_cache.json
+price_alerts.json
+
 # Media folder (keep folder but ignore contents)
 media/*
 !media/.gitkeep

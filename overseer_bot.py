@@ -8,6 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
+import ccxt
 
 # ------------------------------------------------------------
 # CONFIG & LOGGING
@@ -53,6 +54,181 @@ auth_v1 = tweepy.OAuth1UserHandler(
     CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET
 )
 api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
+
+# ------------------------------------------------------------
+# TOKEN SCALPER MODULE - PRICE MONITORING
+# ------------------------------------------------------------
+PRICE_CACHE_FILE = "price_cache.json"
+PRICE_ALERT_FILE = "price_alerts.json"
+
+# Tokens to monitor with their configuration
+MONITORED_TOKENS = {
+    'SOL/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 5.0,  # Alert on 5% price increase
+        'alert_threshold_down': 5.0,  # Alert on 5% price decrease
+        'check_interval': 5  # Check every 5 minutes
+    },
+    'BTC/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 3.0,
+        'alert_threshold_down': 3.0,
+        'check_interval': 5
+    },
+    'ETH/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 4.0,
+        'alert_threshold_down': 4.0,
+        'check_interval': 5
+    }
+}
+
+def load_price_cache():
+    """Load cached price data."""
+    if os.path.exists(PRICE_CACHE_FILE):
+        with open(PRICE_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_price_cache(cache):
+    """Save price data to cache."""
+    with open(PRICE_CACHE_FILE, 'w') as f:
+        json.dump(cache, f)
+
+def get_token_price(symbol, exchange_name='binance'):
+    """Fetch current token price from exchange."""
+    try:
+        exchange = getattr(ccxt, exchange_name)()
+        ticker = exchange.fetch_ticker(symbol)
+        return {
+            'price': ticker['last'],
+            'high_24h': ticker['high'],
+            'low_24h': ticker['low'],
+            'volume_24h': ticker['quoteVolume'],
+            'change_24h': ticker['percentage'],
+            'timestamp': time.time()
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
+        return None
+
+def calculate_price_change(old_price, new_price):
+    """Calculate percentage change between two prices."""
+    if old_price == 0:
+        return 0
+    return ((new_price - old_price) / old_price) * 100
+
+def check_price_alerts():
+    """Monitor token prices and generate alerts."""
+    price_cache = load_price_cache()
+    
+    for symbol, config in MONITORED_TOKENS.items():
+        current_data = get_token_price(symbol, config['exchange'])
+        
+        if not current_data:
+            continue
+            
+        current_price = current_data['price']
+        change_24h = current_data['change_24h']
+        
+        # Check if we have previous data
+        cache_key = f"{symbol}_{config['exchange']}"
+        if cache_key in price_cache:
+            old_price = price_cache[cache_key]['price']
+            price_change = calculate_price_change(old_price, current_price)
+            
+            # Check for significant price movements
+            if abs(price_change) >= config['alert_threshold_up'] if price_change > 0 else config['alert_threshold_down']:
+                post_price_alert(symbol, current_data, price_change)
+        
+        # Update cache
+        price_cache[cache_key] = current_data
+    
+    save_price_cache(price_cache)
+
+def post_price_alert(symbol, price_data, price_change):
+    """Post a price alert to Twitter with Overseer personality."""
+    try:
+        token_name = symbol.split('/')[0]
+        direction = "SURGE" if price_change > 0 else "DIP"
+        emoji = "📈🚀" if price_change > 0 else "📉⚠️"
+        
+        personality_line = random.choice([
+            "The wasteland economy shifts.",
+            "Market radiation detected.",
+            "FizzCo Analytics reporting.",
+            "Vault-Tec market surveillance active.",
+            "The caps flow differently now."
+        ])
+        
+        alert_messages = [
+            (
+                f"🔔 MARKET ALERT {emoji}\n\n"
+                f"${token_name} {direction}: {price_change:+.2f}%\n"
+                f"Current: ${price_data['price']:.2f}\n"
+                f"24h Change: {price_data['change_24h']:+.2f}%\n\n"
+                f"{personality_line}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"⚡ PRICE MOVEMENT DETECTED {emoji}\n\n"
+                f"Token: ${token_name}\n"
+                f"Change: {price_change:+.2f}%\n"
+                f"Price: ${price_data['price']:.2f}\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )
+        ]
+        
+        message = random.choice(alert_messages)
+        
+        # Ensure message fits Twitter limit
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"🔔 ${token_name} {direction}: {price_change:+.2f}%\n"
+                f"Price: ${price_data['price']:.2f}\n\n"
+                f"{personality_line}\n\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted price alert for {symbol}: {price_change:+.2f}%")
+        
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post price alert: {e}")
+
+def post_market_summary():
+    """Post a market summary with multiple token prices."""
+    try:
+        summary_lines = ["📊 WASTELAND MARKET REPORT 📊\n"]
+        
+        for symbol, config in MONITORED_TOKENS.items():
+            data = get_token_price(symbol, config['exchange'])
+            if data:
+                token_name = symbol.split('/')[0]
+                emoji = "🟢" if data['change_24h'] > 0 else "🔴"
+                summary_lines.append(
+                    f"{emoji} ${token_name}: ${data['price']:.2f} ({data['change_24h']:+.2f}%)"
+                )
+        
+        personality = random.choice([
+            "The economy glows. Caps flow.",
+            "Market surveillance: nominal.",
+            "Vault-Tec approves these numbers.",
+            "FizzCo Industries: Making caps sparkle."
+        ])
+        
+        message = "\n".join(summary_lines) + f"\n\n{personality}\n\n🎮 {GAME_LINK}"
+        
+        # Ensure fits in tweet
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = "\n".join(summary_lines[:4]) + f"\n\n{personality}\n\n{GAME_LINK}"
+        
+        client.create_tweet(text=message[:TWITTER_CHAR_LIMIT])
+        logging.info("Posted market summary")
+        
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post market summary: {e}")
 
 # ------------------------------------------------------------
 # FLASK APP FOR WALLET EVENTS
@@ -633,6 +809,38 @@ def generate_contextual_response(username, message):
     """Generate a response based on message content with Overseer personality."""
     message_lower = message.lower()
     
+    # Check for price queries
+    if any(word in message_lower for word in ['price', 'btc', 'eth', 'sol', 'bitcoin', 'ethereum', 'solana', 'market']):
+        # Extract which token they're asking about
+        token_symbol = None
+        if 'sol' in message_lower or 'solana' in message_lower:
+            token_symbol = 'SOL/USDT'
+        elif 'btc' in message_lower or 'bitcoin' in message_lower:
+            token_symbol = 'BTC/USDT'
+        elif 'eth' in message_lower or 'ethereum' in message_lower:
+            token_symbol = 'ETH/USDT'
+        
+        if token_symbol and token_symbol in MONITORED_TOKENS:
+            config = MONITORED_TOKENS[token_symbol]
+            price_data = get_token_price(token_symbol, config['exchange'])
+            if price_data:
+                token_name = token_symbol.split('/')[0]
+                emoji = "📈" if price_data['change_24h'] > 0 else "📉"
+                responses = [
+                    f"@{username} {emoji} ${token_name}: ${price_data['price']:.2f} (24h: {price_data['change_24h']:+.2f}%). The wasteland economy shifts. {GAME_LINK}",
+                    f"@{username} Market intel: ${token_name} at ${price_data['price']:.2f}. Change: {price_data['change_24h']:+.2f}%. Vault-Tec Analytics reporting. {GAME_LINK}",
+                    f"@{username} ${token_name} price: ${price_data['price']:.2f}. 24h: {price_data['change_24h']:+.2f}%. The economy glows. {GAME_LINK}"
+                ]
+                return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+        
+        # General market query
+        responses = [
+            f"@{username} Market surveillance active. Check SOL, BTC, ETH prices. The economy glows. {GAME_LINK}",
+            f"@{username} Wasteland market intel: Monitoring major tokens. FizzCo Analytics at your service. {GAME_LINK}",
+            f"@{username} Token prices tracked. The caps flow differently now. {GAME_LINK}"
+        ]
+        return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
     # Keyword-based contextual responses
     if any(word in message_lower for word in ['help', 'how', 'what is', 'explain']):
         responses = [
@@ -740,6 +948,13 @@ scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(MENTION_C
 scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1)
 # Daily diagnostic at 8 AM
 scheduler.add_job(overseer_diagnostic, 'cron', hour=8)
+
+# Token Scalper Features
+# Check prices and send alerts every 5 minutes
+scheduler.add_job(check_price_alerts, 'interval', minutes=5)
+# Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
+scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0)
+
 scheduler.start()
 
 # ------------------------------------------------------------
