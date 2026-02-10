@@ -8,6 +8,9 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
+import ccxt
+import re
+import threading
 
 # ------------------------------------------------------------
 # CONFIG & LOGGING
@@ -55,6 +58,216 @@ auth_v1 = tweepy.OAuth1UserHandler(
 api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
 
 # ------------------------------------------------------------
+# TOKEN SCALPER MODULE - PRICE MONITORING
+# ------------------------------------------------------------
+PRICE_CACHE_FILE = "price_cache.json"
+
+# Tokens to monitor with their configuration
+MONITORED_TOKENS = {
+    'SOL/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 5.0,  # Alert on 5% price increase
+        'alert_threshold_down': 5.0,  # Alert on 5% price decrease
+        'check_interval': 5  # Check every 5 minutes
+    },
+    'BTC/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 3.0,
+        'alert_threshold_down': 3.0,
+        'check_interval': 5
+    },
+    'ETH/USDT': {
+        'exchange': 'binance',
+        'alert_threshold_up': 4.0,
+        'alert_threshold_down': 4.0,
+        'check_interval': 5
+    }
+}
+
+def load_price_cache():
+    """Load cached price data."""
+    if os.path.exists(PRICE_CACHE_FILE):
+        with open(PRICE_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_price_cache(cache):
+    """Save price data to cache."""
+    with open(PRICE_CACHE_FILE, 'w') as f:
+        json.dump(cache, f)
+
+def get_token_price(symbol, exchange_name='binance'):
+    """Fetch current token price from exchange."""
+    try:
+        exchange = getattr(ccxt, exchange_name)()
+        ticker = exchange.fetch_ticker(symbol)
+        return {
+            'price': ticker['last'],
+            'high_24h': ticker['high'],
+            'low_24h': ticker['low'],
+            'volume_24h': ticker['quoteVolume'],
+            'change_24h': ticker['percentage'],
+            'timestamp': time.time()
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
+        return None
+
+def calculate_price_change(old_price, new_price):
+    """Calculate percentage change between two prices."""
+    if old_price == 0:
+        return 0
+    return ((new_price - old_price) / old_price) * 100
+
+def check_price_alerts():
+    """Monitor token prices and generate alerts."""
+    price_cache = load_price_cache()
+    
+    for symbol, config in MONITORED_TOKENS.items():
+        current_data = get_token_price(symbol, config['exchange'])
+        
+        if not current_data:
+            continue
+            
+        current_price = current_data['price']
+        change_24h = current_data['change_24h']
+        
+        # Check if we have previous data
+        cache_key = f"{symbol}_{config['exchange']}"
+        if cache_key in price_cache:
+            old_price = price_cache[cache_key]['price']
+            price_change = calculate_price_change(old_price, current_price)
+            
+            # Check for significant price movements with correct threshold logic
+            should_alert = False
+            if price_change > 0 and price_change >= config['alert_threshold_up']:
+                should_alert = True
+            elif price_change < 0 and abs(price_change) >= config['alert_threshold_down']:
+                should_alert = True
+            
+            if should_alert:
+                post_price_alert(symbol, current_data, price_change)
+        
+        # Update cache
+        price_cache[cache_key] = current_data
+    
+    save_price_cache(price_cache)
+
+def create_fallback_alert_message(token_name, price_change, price):
+    """Create a guaranteed short fallback alert message."""
+    direction = "SURGE" if price_change > 0 else "DIP"
+    emoji = "📈" if price_change > 0 else "📉"
+    return (
+        f"🔔 ${token_name} {direction}: {price_change:+.2f}% {emoji}\n"
+        f"Price: ${price:.2f}\n\n"
+        f"The wasteland economy shifts.\n\n"
+        f"{GAME_LINK}"
+    )
+
+def post_price_alert(symbol, price_data, price_change):
+    """Post a price alert to Twitter with Overseer personality."""
+    try:
+        token_name = symbol.split('/')[0]
+        direction = "SURGE" if price_change > 0 else "DIP"
+        emoji = "📈🚀" if price_change > 0 else "📉⚠️"
+        
+        personality_line = random.choice([
+            "The wasteland economy shifts.",
+            "Market radiation detected.",
+            "FizzCo Analytics reporting.",
+            "Vault-Tec market surveillance active.",
+            "The caps flow differently now."
+        ])
+        
+        alert_messages = [
+            (
+                f"🔔 MARKET ALERT {emoji}\n\n"
+                f"${token_name} {direction}: {price_change:+.2f}%\n"
+                f"Current: ${price_data['price']:.2f}\n"
+                f"24h Change: {price_data['change_24h']:+.2f}%\n\n"
+                f"{personality_line}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"⚡ PRICE MOVEMENT DETECTED {emoji}\n\n"
+                f"Token: ${token_name}\n"
+                f"Change: {price_change:+.2f}%\n"
+                f"Price: ${price_data['price']:.2f}\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )
+        ]
+        
+        message = random.choice(alert_messages)
+        
+        # Ensure message fits Twitter limit with proper fallback
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = create_fallback_alert_message(
+                token_name, price_change, price_data['price']
+            )
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted price alert for {symbol}: {price_change:+.2f}%")
+        
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post price alert: {e}")
+
+def post_market_summary():
+    """Post a market summary with multiple token prices."""
+    try:
+        summary_lines = ["📊 WASTELAND MARKET REPORT 📊\n"]
+        
+        for symbol, config in MONITORED_TOKENS.items():
+            data = get_token_price(symbol, config['exchange'])
+            if data:
+                token_name = symbol.split('/')[0]
+                emoji = "🟢" if data['change_24h'] > 0 else "🔴"
+                summary_lines.append(
+                    f"{emoji} ${token_name}: ${data['price']:.2f} ({data['change_24h']:+.2f}%)"
+                )
+        
+        personality = random.choice([
+            "The economy glows. Caps flow.",
+            "Market surveillance: nominal.",
+            "Vault-Tec approves these numbers.",
+            "FizzCo Industries: Making caps sparkle."
+        ])
+        
+        # Build message with length checking
+        message = "\n".join(summary_lines) + f"\n\n{personality}\n\n🎮 {GAME_LINK}"
+        
+        # Truncate if needed by removing token lines from the end
+        if len(message) > TWITTER_CHAR_LIMIT:
+            # Keep header and build with fewer tokens
+            truncated_lines = [summary_lines[0]]
+            footer = f"\n\n{personality}\n\n🎮 {GAME_LINK}"
+            
+            for line in summary_lines[1:]:
+                test_message = "\n".join(truncated_lines + [line]) + footer
+                if len(test_message) <= TWITTER_CHAR_LIMIT:
+                    truncated_lines.append(line)
+                else:
+                    break
+            
+            # Ensure we have at least one token, use simplified format if needed
+            if len(truncated_lines) < 2:  # Only header, no tokens
+                # Use a super simple format with just one token
+                if len(summary_lines) > 1:
+                    first_token = summary_lines[1]
+                    message = f"{summary_lines[0]}{first_token}\n\n{personality}\n\n{GAME_LINK}"
+                else:
+                    # No token data available at all
+                    message = f"{summary_lines[0]}No market data available.\n\n{personality}\n\n{GAME_LINK}"
+            else:
+                message = "\n".join(truncated_lines) + footer
+        
+        client.create_tweet(text=message)
+        logging.info("Posted market summary")
+        
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post market summary: {e}")
+
+# ------------------------------------------------------------
 # FLASK APP FOR WALLET EVENTS
 # ------------------------------------------------------------
 app = Flask(__name__)
@@ -64,6 +277,246 @@ def overseer_event():
     event = request.json
     overseer_event_bridge(event)
     return {"ok": True}
+
+@app.post("/token-scalper-alert")
+def token_scalper_alert():
+    """Webhook endpoint for Token-scalper bot alerts"""
+    try:
+        alert_data = request.json
+        alert_type = alert_data.get('type', 'unknown')
+        
+        if alert_type == 'rug_pull':
+            handle_rug_pull_alert(alert_data)
+        elif alert_type == 'high_potential':
+            handle_high_potential_alert(alert_data)
+        elif alert_type == 'airdrop':
+            handle_airdrop_alert(alert_data)
+        else:
+            logging.warning(f"Unknown alert type: {alert_type}")
+        
+        return {"ok": True, "processed": True}
+    except Exception as e:
+        logging.error(f"Token scalper alert failed: {e}")
+        return {"ok": False, "error": str(e)}, 500
+
+# ------------------------------------------------------------
+# TOKEN SAFETY & ANALYSIS MODULE
+# ------------------------------------------------------------
+TOKEN_SAFETY_CACHE = {}  # Cache for token safety checks
+TOKEN_SAFETY_CACHE_LOCK = threading.Lock()  # Thread safety for cache
+
+# Chain ID mapping for API calls
+CHAIN_IDS = {
+    'eth': '1',
+    'bsc': '56',
+    'polygon': '137',
+    'avalanche': '43114',
+    'arbitrum': '42161'
+}
+
+def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
+    """
+    Basic token safety check (simplified version of Token-scalper's safety_checker)
+    
+    Returns dict with:
+        - is_safe: bool
+        - risk_score: 0-100 (higher = more risky)
+        - warnings: list of issues found
+        - honeypot: bool
+    """
+    cache_key = f"{chain}:{token_address}"
+    
+    # Check cache first (valid for 1 hour) with thread safety
+    with TOKEN_SAFETY_CACHE_LOCK:
+        if cache_key in TOKEN_SAFETY_CACHE:
+            cached = TOKEN_SAFETY_CACHE[cache_key]
+            if time.time() - cached['timestamp'] < 3600:
+                return cached['data']
+    
+    # Initialize result
+    result = {
+        'is_safe': True,
+        'risk_score': 0,
+        'warnings': [],
+        'honeypot': False,
+        'liquidity_ok': True,
+        'contract_verified': None
+    }
+    
+    try:
+        # Use honeypot.is API for basic checks
+        chain_id = CHAIN_IDS.get(chain, '1')
+        honeypot_api = f"https://api.honeypot.is/v2/IsHoneypot?address={token_address}&chainID={chain_id}"
+        response = requests.get(honeypot_api, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('honeypotResult', {}).get('isHoneypot'):
+                result['honeypot'] = True
+                result['is_safe'] = False
+                result['risk_score'] += 50
+                result['warnings'].append('HONEYPOT DETECTED')
+            
+            # Check buy/sell taxes
+            buy_tax = data.get('simulationResult', {}).get('buyTax', 0)
+            sell_tax = data.get('simulationResult', {}).get('sellTax', 0)
+            
+            if buy_tax > 10:
+                result['warnings'].append(f'High buy tax: {buy_tax}%')
+                result['risk_score'] += 15
+            if sell_tax > 10:
+                result['warnings'].append(f'High sell tax: {sell_tax}%')
+                result['risk_score'] += 15
+            if sell_tax > 50:
+                result['is_safe'] = False
+                result['risk_score'] += 20
+    
+    except Exception as e:
+        logging.error(f"Token safety check failed for {token_address}: {e}")
+        result['warnings'].append('Unable to verify safety')
+    
+    # Determine overall safety
+    if result['risk_score'] > 70:
+        result['is_safe'] = False
+    
+    # Cache result with thread safety
+    with TOKEN_SAFETY_CACHE_LOCK:
+        TOKEN_SAFETY_CACHE[cache_key] = {
+            'timestamp': time.time(),
+            'data': result
+        }
+    
+    return result
+
+def handle_rug_pull_alert(alert_data: dict):
+    """Handle rug pull alert from Token-scalper"""
+    token_name = alert_data.get('token_name', 'Unknown Token')
+    token_address = alert_data.get('token_address', 'N/A')
+    severity = alert_data.get('severity', 'medium')
+    details = alert_data.get('details', 'Suspicious activity detected')
+    
+    emoji_map = {
+        'low': '⚠️',
+        'medium': '🚨',
+        'high': '🔴',
+        'critical': '🛑'
+    }
+    emoji = emoji_map.get(severity, '⚠️')
+    
+    personality = random.choice([
+        "The wasteland claims another scam.",
+        "Vault-Tec Market Surveillance detected suspicious activity.",
+        "FizzCo Intelligence: Threat confirmed.",
+        "Overseer protocols: Avoid this contamination.",
+        "The caps aren't worth the radiation here."
+    ])
+    
+    # Better address truncation: show start and end
+    address_display = f"{token_address[:6]}...{token_address[-4:]}" if len(token_address) > 10 else token_address
+    
+    message = (
+        f"{emoji} RUG PULL WARNING {emoji}\n\n"
+        f"Token: {token_name}\n"
+        f"Contract: {address_display}\n"
+        f"Severity: {severity.upper()}\n\n"
+        f"{details}\n\n"
+        f"{personality}\n\n"
+        f"#RugPull #CryptoScam #StaySafe\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"{emoji} RUG PULL WARNING {emoji}\n\n"
+                f"{token_name}: {details[:80]}...\n\n"
+                f"{personality}\n\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted rug pull alert for {token_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post rug pull alert: {e}")
+
+def handle_high_potential_alert(alert_data: dict):
+    """Handle high potential token alert from Token-scalper"""
+    token_name = alert_data.get('token_name', 'Unknown Token')
+    score = alert_data.get('opportunity_score', 0)
+    reasons = alert_data.get('reasons', [])
+    
+    personality = random.choice([
+        "Opportunity detected in the wasteland.",
+        "FizzCo Analytics: Potential moonshot identified.",
+        "Vault-Tec recommends: Investigation warranted.",
+        "The Overseer sees potential here.",
+        "Caps flow toward opportunity."
+    ])
+    
+    reasons_str = ' • '.join(reasons[:3]) if reasons else 'Multiple positive indicators'
+    
+    message = (
+        f"🚀 HIGH POTENTIAL TOKEN 🚀\n\n"
+        f"Token: {token_name}\n"
+        f"Score: {score}/100\n"
+        f"Signals: {reasons_str}\n\n"
+        f"{personality}\n\n"
+        f"DYOR • Not Financial Advice\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"🚀 {token_name} - Score: {score}/100\n\n"
+                f"{personality}\n\n"
+                f"DYOR • NFA\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted high potential alert for {token_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post high potential alert: {e}")
+
+def handle_airdrop_alert(alert_data: dict):
+    """Handle airdrop opportunity alert"""
+    airdrop_name = alert_data.get('name', 'Unknown Airdrop')
+    website = alert_data.get('website', '')
+    value_estimate = alert_data.get('value_estimate', 'TBD')
+    
+    personality = random.choice([
+        "Free caps detected. The wasteland provides.",
+        "Vault-Tec Airdrop Alert: Opportunity incoming.",
+        "FizzCo Intelligence: Legitimate airdrop found.",
+        "The Overseer approves this distribution.",
+        "Claim your share of the wasteland economy."
+    ])
+    
+    message = (
+        f"🎁 AIRDROP OPPORTUNITY 🎁\n\n"
+        f"Project: {airdrop_name}\n"
+        f"Est. Value: {value_estimate}\n"
+        f"Link: {website}\n\n"
+        f"{personality}\n\n"
+        f"Verify legitimacy • DYOR\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"🎁 {airdrop_name}\n"
+                f"Value: {value_estimate}\n\n"
+                f"{personality}\n\n"
+                f"{website}\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted airdrop alert for {airdrop_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post airdrop alert: {e}")
 
 # ------------------------------------------------------------
 # FILES & MEDIA
@@ -633,6 +1086,83 @@ def generate_contextual_response(username, message):
     """Generate a response based on message content with Overseer personality."""
     message_lower = message.lower()
     
+    # Check for price queries
+    if any(word in message_lower for word in ['price', 'btc', 'eth', 'sol', 'bitcoin', 'ethereum', 'solana', 'market']):
+        # Extract which token they're asking about
+        token_symbol = None
+        if 'sol' in message_lower or 'solana' in message_lower:
+            token_symbol = 'SOL/USDT'
+        elif 'btc' in message_lower or 'bitcoin' in message_lower:
+            token_symbol = 'BTC/USDT'
+        elif 'eth' in message_lower or 'ethereum' in message_lower:
+            token_symbol = 'ETH/USDT'
+        
+        if token_symbol and token_symbol in MONITORED_TOKENS:
+            config = MONITORED_TOKENS[token_symbol]
+            price_data = get_token_price(token_symbol, config['exchange'])
+            if price_data:
+                token_name = token_symbol.split('/')[0]
+                emoji = "📈" if price_data['change_24h'] > 0 else "📉"
+                responses = [
+                    f"@{username} {emoji} ${token_name}: ${price_data['price']:.2f} (24h: {price_data['change_24h']:+.2f}%). The wasteland economy shifts. {GAME_LINK}",
+                    f"@{username} Market intel: ${token_name} at ${price_data['price']:.2f}. Change: {price_data['change_24h']:+.2f}%. Vault-Tec Analytics reporting. {GAME_LINK}",
+                    f"@{username} ${token_name} price: ${price_data['price']:.2f}. 24h: {price_data['change_24h']:+.2f}%. The economy glows. {GAME_LINK}"
+                ]
+                return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+        
+        # General market query
+        responses = [
+            f"@{username} Market surveillance active. Check SOL, BTC, ETH prices. The economy glows. {GAME_LINK}",
+            f"@{username} Wasteland market intel: Monitoring major tokens. FizzCo Analytics at your service. {GAME_LINK}",
+            f"@{username} Token prices tracked. The caps flow differently now. {GAME_LINK}"
+        ]
+        return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
+    # Check for token safety queries (contract address or "safe" keywords)
+    if any(word in message_lower for word in ['safe', 'scam', 'rug', 'honeypot', 'check', 'verify']) or '0x' in message_lower:
+        # Try to extract contract address
+        address_match = re.search(r'0x[a-fA-F0-9]{40}', message)
+        
+        if address_match:
+            token_address = address_match.group(0)
+            safety_result = check_token_safety(token_address)
+            
+            if safety_result['honeypot']:
+                responses = [
+                    f"@{username} 🛑 HONEYPOT DETECTED. This token is contaminated. The wasteland claims another scam. Avoid. {GAME_LINK}",
+                    f"@{username} ⚠️ Vault-Tec Alert: HONEYPOT. Do not engage. The Overseer warns you. {GAME_LINK}"
+                ]
+            elif not safety_result['is_safe']:
+                warnings = ', '.join(safety_result['warnings'][:2])
+                responses = [
+                    f"@{username} 🚨 HIGH RISK ({safety_result['risk_score']}/100). Issues: {warnings}. Proceed with extreme caution. {GAME_LINK}",
+                    f"@{username} ⚠️ Risk Score: {safety_result['risk_score']}/100. {warnings}. The wasteland is treacherous. {GAME_LINK}"
+                ]
+            else:
+                responses = [
+                    f"@{username} ✅ Risk Score: {safety_result['risk_score']}/100. No major red flags detected. DYOR. {GAME_LINK}",
+                    f"@{username} 🔍 Preliminary scan complete. Risk: {safety_result['risk_score']}/100. Looks cleaner than most. DYOR. {GAME_LINK}"
+                ]
+            
+            return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+        else:
+            # Generic safety advice without address
+            responses = [
+                f"@{username} Safety checks: Look for honeypots, high taxes, locked liquidity. The wasteland is full of scams. {GAME_LINK}",
+                f"@{username} Vault-Tec safety protocol: Verify contracts, check dev wallets, test with small amounts. Stay vigilant. {GAME_LINK}",
+                f"@{username} The Overseer advises: DYOR, avoid honeypots, watch for rug pulls. Survival requires caution. {GAME_LINK}"
+            ]
+            return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
+    # Check for airdrop queries
+    if any(word in message_lower for word in ['airdrop', 'free', 'claim', 'giveaway']):
+        responses = [
+            f"@{username} 🎁 Airdrop intel coming soon. The Overseer monitors opportunities. Stay alert. {GAME_LINK}",
+            f"@{username} Free caps? The wasteland provides. Check back for legitimate airdrops. {GAME_LINK}",
+            f"@{username} Vault-Tec Airdrop Division active. Announcements forthcoming. Patience, dweller. {GAME_LINK}"
+        ]
+        return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
     # Keyword-based contextual responses
     if any(word in message_lower for word in ['help', 'how', 'what is', 'explain']):
         responses = [
@@ -740,6 +1270,13 @@ scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(MENTION_C
 scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1)
 # Daily diagnostic at 8 AM
 scheduler.add_job(overseer_diagnostic, 'cron', hour=8)
+
+# Token Scalper Features
+# Check prices and send alerts every 5 minutes
+scheduler.add_job(check_price_alerts, 'interval', minutes=5)
+# Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
+scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0)
+
 scheduler.start()
 
 # ------------------------------------------------------------
