@@ -53,6 +53,34 @@
 - 🔒 HTTP Basic Auth protected
 - 🔌 RESTful API endpoints
 
+## 🗣️ How to Interact with the Bot
+
+**Mention the bot on Twitter:** `@OverseerBot` (replace with your bot handle)
+
+### Quick Examples
+
+**Check Token Prices:**
+```
+@OverseerBot what's SOL price?
+@OverseerBot how much is Bitcoin?
+```
+
+**Token Safety Check:**
+```
+@OverseerBot is 0x1234567890123456789012345678901234567890 safe?
+```
+
+**General Queries:**
+```
+@OverseerBot what's happening in the wasteland?
+```
+
+**Response Time:** 15-30 minutes (bot checks mentions periodically)
+
+📖 **Full interaction guide:** [USER_INTERACTION_GUIDE.md](./USER_INTERACTION_GUIDE.md)
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -159,19 +187,39 @@ Compatible with:
 
 Comprehensive documentation available:
 
-- 📘 **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Complete all-in-one guide
-  - Detailed features breakdown
+### Essential Guides
+
+- 📘 **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Complete all-in-one technical guide
   - Architecture and components
   - API reference
   - Security hardening
   - Troubleshooting guide
   - Advanced configuration
 
-- 📋 **Quick Reference**
-  - [Security Setup](./DOCUMENTATION.md#-security-setup)
-  - [API Endpoints](./DOCUMENTATION.md#-api-reference)
-  - [Webhook Integration](./DOCUMENTATION.md#-webhook-integration)
-  - [Troubleshooting](./DOCUMENTATION.md#-troubleshooting)
+- 🐦 **[TWITTER_BEST_PRACTICES.md](./TWITTER_BEST_PRACTICES.md)** - Avoid shadow bans
+  - Rate limit safety (bot uses < 5% of limits!)
+  - Twitter API compliance
+  - Best practices for automated accounts
+  - Monitoring and adjustment guidance
+
+- 🗣️ **[USER_INTERACTION_GUIDE.md](./USER_INTERACTION_GUIDE.md)** - How to interact with the bot
+  - How to mention @OverseerBot to get responses
+  - Price check queries (SOL, BTC, ETH)
+  - Token safety checks (honeypot detection)
+  - Example interactions and timing expectations
+
+- 🔗 **[TOKEN_SCALPER_SETUP.md](./TOKEN_SCALPER_SETUP.md)** - Wallet configuration
+  - How to add wallets for Token-scalper bot
+  - Webhook integration between bots
+  - RPC endpoint configuration
+  - Alert types and monitoring
+
+### Quick Reference
+
+- [Security Setup](./DOCUMENTATION.md#-security-setup)
+- [API Endpoints](./DOCUMENTATION.md#-api-reference)
+- [Webhook Integration](./DOCUMENTATION.md#-webhook-integration)
+- [Troubleshooting](./DOCUMENTATION.md#-troubleshooting)
 
 ## 🔐 Security
 
