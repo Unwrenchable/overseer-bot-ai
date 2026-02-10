@@ -8,6 +8,7 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
+from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
 import threading
@@ -42,6 +43,21 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
+
+# Admin authentication credentials
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'vault77secure')
+
+# Security warning for default credentials
+if ADMIN_PASSWORD == 'vault77secure':
+    logging.warning("="*60)
+    logging.warning("⚠️  SECURITY WARNING: Using default admin password!")
+    logging.warning("⚠️  Change ADMIN_PASSWORD in production immediately!")
+    logging.warning("⚠️  Generate secure password: openssl rand -base64 32")
+    logging.warning("="*60)
+
+# Webhook API key for external services (like Token-scalper)
+WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required
 
 client = tweepy.Client(
     consumer_key=CONSUMER_KEY,
@@ -96,8 +112,89 @@ def save_price_cache(cache):
     with open(PRICE_CACHE_FILE, 'w') as f:
         json.dump(cache, f)
 
+# CoinGecko API mapping for tokens (no geo-restrictions, free tier)
+COINGECKO_MAPPING = {
+    'SOL/USDT': 'solana',
+    'BTC/USDT': 'bitcoin',
+    'ETH/USDT': 'ethereum'
+}
+
+def get_token_price_coingecko(symbol):
+    """
+    Fetch token price from CoinGecko API (fallback when exchanges are geo-blocked).
+    CoinGecko has no geographic restrictions and provides reliable price data.
+    
+    Note: CoinGecko simple API has limitations:
+    - high_24h and low_24h are not available (returns None)
+    - Downstream consumers should handle None values for these fields
+    
+    Returns:
+        dict: Price data with 'source': 'coingecko' or None on error
+    """
+    try:
+        coin_id = COINGECKO_MAPPING.get(symbol)
+        if not coin_id:
+            logging.warning(f"No CoinGecko mapping for {symbol}")
+            return None
+        
+        url = f"https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            'ids': coin_id,
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true',
+            'include_24hr_vol': 'true'
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if coin_id not in data:
+            logging.error(f"CoinGecko returned no data for {coin_id}")
+            return None
+        
+        coin_data = data[coin_id]
+        
+        return {
+            'price': coin_data.get('usd', 0),
+            'high_24h': None,  # CoinGecko simple API doesn't provide this
+            'low_24h': None,   # CoinGecko simple API doesn't provide this
+            'volume_24h': coin_data.get('usd_24h_vol', 0),
+            'change_24h': coin_data.get('usd_24h_change', 0),
+            'timestamp': time.time(),
+            'source': 'coingecko'
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch price from CoinGecko for {symbol}: {e}")
+        return None
+
+def is_geo_restriction_error(exception):
+    """
+    Check if an exception indicates a geographic restriction.
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        bool: True if the error is due to geographic restrictions
+    """
+    error_msg = str(exception).lower()
+    geo_indicators = [
+        '451',  # HTTP 451 - Unavailable For Legal Reasons
+        'restricted location',
+        'unavailable from a restricted',
+        'service unavailable from',
+        'not available in your region',
+        'geo',
+        'geographic restriction'
+    ]
+    return any(indicator in error_msg for indicator in geo_indicators)
+
 def get_token_price(symbol, exchange_name='binance'):
-    """Fetch current token price from exchange."""
+    """
+    Fetch current token price from exchange with CoinGecko fallback.
+    If the exchange is geo-blocked or fails, automatically falls back to CoinGecko.
+    """
     try:
         exchange = getattr(ccxt, exchange_name)()
         ticker = exchange.fetch_ticker(symbol)
@@ -107,11 +204,19 @@ def get_token_price(symbol, exchange_name='binance'):
             'low_24h': ticker['low'],
             'volume_24h': ticker['quoteVolume'],
             'change_24h': ticker['percentage'],
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'source': exchange_name
         }
     except Exception as e:
-        logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
-        return None
+        # Check if it's a geographic restriction error
+        if is_geo_restriction_error(e):
+            logging.warning(f"{exchange_name} is geo-blocked for {symbol}, falling back to CoinGecko...")
+            return get_token_price_coingecko(symbol)
+        else:
+            logging.error(f"Failed to fetch price for {symbol} on {exchange_name}: {e}")
+            # Try CoinGecko as fallback for any error
+            logging.info(f"Attempting CoinGecko fallback for {symbol}...")
+            return get_token_price_coingecko(symbol)
 
 def calculate_price_change(old_price, new_price):
     """Calculate percentage change between two prices."""
@@ -275,9 +380,42 @@ def post_market_summary():
 # FLASK APP FOR WALLET EVENTS
 # ------------------------------------------------------------
 app = Flask(__name__)
+auth = HTTPBasicAuth()
+
+@auth.verify_password
+def verify_password(username, password):
+    """Verify admin credentials for monitoring UI access"""
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        return username
+    return None
+
+def verify_webhook_auth():
+    """
+    Verify webhook authentication via API key in Authorization header.
+    Returns True if authentication is valid or not required.
+    Returns False if authentication is required but invalid.
+    """
+    # If no webhook API key is configured, allow access (backward compatibility)
+    if not WEBHOOK_API_KEY:
+        return True
+    
+    # Check for Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    
+    # Support both "Bearer TOKEN" and just "TOKEN" formats
+    if auth_header.startswith('Bearer '):
+        provided_key = auth_header[7:]  # Remove "Bearer " prefix
+    else:
+        provided_key = auth_header
+    
+    return provided_key == WEBHOOK_API_KEY
 
 @app.post("/overseer-event")
 def overseer_event():
+    """Webhook endpoint for overseer events"""
+    if not verify_webhook_auth():
+        return {"ok": False, "error": "Unauthorized"}, 401
+    
     event = request.json
     overseer_event_bridge(event)
     return {"ok": True}
@@ -285,6 +423,9 @@ def overseer_event():
 @app.post("/token-scalper-alert")
 def token_scalper_alert():
     """Webhook endpoint for Token-scalper bot alerts"""
+    if not verify_webhook_auth():
+        return {"ok": False, "error": "Unauthorized"}, 401
+    
     try:
         alert_data = request.json
         alert_type = alert_data.get('type', 'unknown')
@@ -324,6 +465,7 @@ def add_activity(activity_type, description):
             RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
 
 @app.route("/")
+@auth.login_required
 def monitoring_dashboard():
     """Main monitoring dashboard"""
     from flask import render_template_string
@@ -565,6 +707,7 @@ def monitoring_dashboard():
     )
 
 @app.route("/api/status")
+@auth.login_required
 def api_status():
     """JSON endpoint for bot status"""
     uptime = datetime.now() - BOT_START_TIME
@@ -579,6 +722,7 @@ def api_status():
     }
 
 @app.route("/api/prices")
+@auth.login_required
 def api_prices():
     """JSON endpoint for current prices"""
     price_cache = load_price_cache()
@@ -588,6 +732,7 @@ def api_prices():
     }
 
 @app.route("/api/jobs")
+@auth.login_required
 def api_jobs():
     """JSON endpoint for scheduler jobs"""
     jobs_info = []
@@ -601,6 +746,7 @@ def api_jobs():
     return {"jobs": jobs_info}
 
 @app.route("/api/activities")
+@auth.login_required
 def api_activities():
     """JSON endpoint for recent activities"""
     with RECENT_ACTIVITIES_LOCK:
