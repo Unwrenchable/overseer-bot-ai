@@ -276,6 +276,230 @@ def overseer_event():
     overseer_event_bridge(event)
     return {"ok": True}
 
+@app.post("/token-scalper-alert")
+def token_scalper_alert():
+    """Webhook endpoint for Token-scalper bot alerts"""
+    try:
+        alert_data = request.json
+        alert_type = alert_data.get('type', 'unknown')
+        
+        if alert_type == 'rug_pull':
+            handle_rug_pull_alert(alert_data)
+        elif alert_type == 'high_potential':
+            handle_high_potential_alert(alert_data)
+        elif alert_type == 'airdrop':
+            handle_airdrop_alert(alert_data)
+        else:
+            logging.warning(f"Unknown alert type: {alert_type}")
+        
+        return {"ok": True, "processed": True}
+    except Exception as e:
+        logging.error(f"Token scalper alert failed: {e}")
+        return {"ok": False, "error": str(e)}, 500
+
+# ------------------------------------------------------------
+# TOKEN SAFETY & ANALYSIS MODULE
+# ------------------------------------------------------------
+TOKEN_SAFETY_CACHE = {}  # Cache for token safety checks
+
+def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
+    """
+    Basic token safety check (simplified version of Token-scalper's safety_checker)
+    
+    Returns dict with:
+        - is_safe: bool
+        - risk_score: 0-100 (higher = more risky)
+        - warnings: list of issues found
+        - honeypot: bool
+    """
+    cache_key = f"{chain}:{token_address}"
+    
+    # Check cache first (valid for 1 hour)
+    if cache_key in TOKEN_SAFETY_CACHE:
+        cached = TOKEN_SAFETY_CACHE[cache_key]
+        if time.time() - cached['timestamp'] < 3600:
+            return cached['data']
+    
+    # Initialize result
+    result = {
+        'is_safe': True,
+        'risk_score': 0,
+        'warnings': [],
+        'honeypot': False,
+        'liquidity_ok': True,
+        'contract_verified': None
+    }
+    
+    try:
+        # Use honeypot.is API for basic checks
+        honeypot_api = f"https://api.honeypot.is/v2/IsHoneypot?address={token_address}&chainID={'1' if chain == 'eth' else '56'}"
+        response = requests.get(honeypot_api, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('honeypotResult', {}).get('isHoneypot'):
+                result['honeypot'] = True
+                result['is_safe'] = False
+                result['risk_score'] += 50
+                result['warnings'].append('HONEYPOT DETECTED')
+            
+            # Check buy/sell taxes
+            buy_tax = data.get('simulationResult', {}).get('buyTax', 0)
+            sell_tax = data.get('simulationResult', {}).get('sellTax', 0)
+            
+            if buy_tax > 10:
+                result['warnings'].append(f'High buy tax: {buy_tax}%')
+                result['risk_score'] += 15
+            if sell_tax > 10:
+                result['warnings'].append(f'High sell tax: {sell_tax}%')
+                result['risk_score'] += 15
+            if sell_tax > 50:
+                result['is_safe'] = False
+                result['risk_score'] += 20
+    
+    except Exception as e:
+        logging.error(f"Token safety check failed for {token_address}: {e}")
+        result['warnings'].append('Unable to verify safety')
+    
+    # Determine overall safety
+    if result['risk_score'] > 70:
+        result['is_safe'] = False
+    
+    # Cache result
+    TOKEN_SAFETY_CACHE[cache_key] = {
+        'timestamp': time.time(),
+        'data': result
+    }
+    
+    return result
+
+def handle_rug_pull_alert(alert_data: dict):
+    """Handle rug pull alert from Token-scalper"""
+    token_name = alert_data.get('token_name', 'Unknown Token')
+    token_address = alert_data.get('token_address', 'N/A')
+    severity = alert_data.get('severity', 'medium')
+    details = alert_data.get('details', 'Suspicious activity detected')
+    
+    emoji_map = {
+        'low': '⚠️',
+        'medium': '🚨',
+        'high': '🔴',
+        'critical': '🛑'
+    }
+    emoji = emoji_map.get(severity, '⚠️')
+    
+    personality = random.choice([
+        "The wasteland claims another scam.",
+        "Vault-Tec Market Surveillance detected suspicious activity.",
+        "FizzCo Intelligence: Threat confirmed.",
+        "Overseer protocols: Avoid this contamination.",
+        "The caps aren't worth the radiation here."
+    ])
+    
+    message = (
+        f"{emoji} RUG PULL WARNING {emoji}\n\n"
+        f"Token: {token_name}\n"
+        f"Contract: {token_address[:10]}...\n"
+        f"Severity: {severity.upper()}\n\n"
+        f"{details}\n\n"
+        f"{personality}\n\n"
+        f"#RugPull #CryptoScam #StaySafe\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"{emoji} RUG PULL WARNING {emoji}\n\n"
+                f"{token_name}: {details[:80]}...\n\n"
+                f"{personality}\n\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted rug pull alert for {token_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post rug pull alert: {e}")
+
+def handle_high_potential_alert(alert_data: dict):
+    """Handle high potential token alert from Token-scalper"""
+    token_name = alert_data.get('token_name', 'Unknown Token')
+    score = alert_data.get('opportunity_score', 0)
+    reasons = alert_data.get('reasons', [])
+    
+    personality = random.choice([
+        "Opportunity detected in the wasteland.",
+        "FizzCo Analytics: Potential moonshot identified.",
+        "Vault-Tec recommends: Investigation warranted.",
+        "The Overseer sees potential here.",
+        "Caps flow toward opportunity."
+    ])
+    
+    reasons_str = ' • '.join(reasons[:3]) if reasons else 'Multiple positive indicators'
+    
+    message = (
+        f"🚀 HIGH POTENTIAL TOKEN 🚀\n\n"
+        f"Token: {token_name}\n"
+        f"Score: {score}/100\n"
+        f"Signals: {reasons_str}\n\n"
+        f"{personality}\n\n"
+        f"DYOR • Not Financial Advice\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"🚀 {token_name} - Score: {score}/100\n\n"
+                f"{personality}\n\n"
+                f"DYOR • NFA\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted high potential alert for {token_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post high potential alert: {e}")
+
+def handle_airdrop_alert(alert_data: dict):
+    """Handle airdrop opportunity alert"""
+    airdrop_name = alert_data.get('name', 'Unknown Airdrop')
+    website = alert_data.get('website', '')
+    value_estimate = alert_data.get('value_estimate', 'TBD')
+    
+    personality = random.choice([
+        "Free caps detected. The wasteland provides.",
+        "Vault-Tec Airdrop Alert: Opportunity incoming.",
+        "FizzCo Intelligence: Legitimate airdrop found.",
+        "The Overseer approves this distribution.",
+        "Claim your share of the wasteland economy."
+    ])
+    
+    message = (
+        f"🎁 AIRDROP OPPORTUNITY 🎁\n\n"
+        f"Project: {airdrop_name}\n"
+        f"Est. Value: {value_estimate}\n"
+        f"Link: {website}\n\n"
+        f"{personality}\n\n"
+        f"Verify legitimacy • DYOR\n\n"
+        f"🎮 {GAME_LINK}"
+    )
+    
+    try:
+        if len(message) > TWITTER_CHAR_LIMIT:
+            message = (
+                f"🎁 {airdrop_name}\n"
+                f"Value: {value_estimate}\n\n"
+                f"{personality}\n\n"
+                f"{website}\n"
+                f"{GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        
+        client.create_tweet(text=message)
+        logging.info(f"Posted airdrop alert for {airdrop_name}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Failed to post airdrop alert: {e}")
+
 # ------------------------------------------------------------
 # FILES & MEDIA
 # ------------------------------------------------------------
@@ -873,6 +1097,52 @@ def generate_contextual_response(username, message):
             f"@{username} Market surveillance active. Check SOL, BTC, ETH prices. The economy glows. {GAME_LINK}",
             f"@{username} Wasteland market intel: Monitoring major tokens. FizzCo Analytics at your service. {GAME_LINK}",
             f"@{username} Token prices tracked. The caps flow differently now. {GAME_LINK}"
+        ]
+        return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
+    # Check for token safety queries (contract address or "safe" keywords)
+    if any(word in message_lower for word in ['safe', 'scam', 'rug', 'honeypot', 'check', 'verify']) or '0x' in message_lower:
+        # Try to extract contract address
+        import re
+        address_match = re.search(r'0x[a-fA-F0-9]{40}', message)
+        
+        if address_match:
+            token_address = address_match.group(0)
+            safety_result = check_token_safety(token_address)
+            
+            if safety_result['honeypot']:
+                responses = [
+                    f"@{username} 🛑 HONEYPOT DETECTED. This token is contaminated. The wasteland claims another scam. Avoid. {GAME_LINK}",
+                    f"@{username} ⚠️ Vault-Tec Alert: HONEYPOT. Do not engage. The Overseer warns you. {GAME_LINK}"
+                ]
+            elif not safety_result['is_safe']:
+                warnings = ', '.join(safety_result['warnings'][:2])
+                responses = [
+                    f"@{username} 🚨 HIGH RISK ({safety_result['risk_score']}/100). Issues: {warnings}. Proceed with extreme caution. {GAME_LINK}",
+                    f"@{username} ⚠️ Risk Score: {safety_result['risk_score']}/100. {warnings}. The wasteland is treacherous. {GAME_LINK}"
+                ]
+            else:
+                responses = [
+                    f"@{username} ✅ Risk Score: {safety_result['risk_score']}/100. No major red flags detected. DYOR. {GAME_LINK}",
+                    f"@{username} 🔍 Preliminary scan complete. Risk: {safety_result['risk_score']}/100. Looks cleaner than most. DYOR. {GAME_LINK}"
+                ]
+            
+            return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+        else:
+            # Generic safety advice without address
+            responses = [
+                f"@{username} Safety checks: Look for honeypots, high taxes, locked liquidity. The wasteland is full of scams. {GAME_LINK}",
+                f"@{username} Vault-Tec safety protocol: Verify contracts, check dev wallets, test with small amounts. Stay vigilant. {GAME_LINK}",
+                f"@{username} The Overseer advises: DYOR, avoid honeypots, watch for rug pulls. Survival requires caution. {GAME_LINK}"
+            ]
+            return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+    
+    # Check for airdrop queries
+    if any(word in message_lower for word in ['airdrop', 'free', 'claim', 'giveaway']):
+        responses = [
+            f"@{username} 🎁 Airdrop intel coming soon. The Overseer monitors opportunities. Stay alert. {GAME_LINK}",
+            f"@{username} Free caps? The wasteland provides. Check back for legitimate airdrops. {GAME_LINK}",
+            f"@{username} Vault-Tec Airdrop Division active. Announcements forthcoming. Patience, dweller. {GAME_LINK}"
         ]
         return random.choice(responses)[:TWITTER_CHAR_LIMIT]
     
