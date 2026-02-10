@@ -59,7 +59,6 @@ api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
 # TOKEN SCALPER MODULE - PRICE MONITORING
 # ------------------------------------------------------------
 PRICE_CACHE_FILE = "price_cache.json"
-PRICE_ALERT_FILE = "price_alerts.json"
 
 # Tokens to monitor with their configuration
 MONITORED_TOKENS = {
@@ -152,7 +151,7 @@ def check_price_alerts():
     
     save_price_cache(price_cache)
 
-def create_fallback_alert_message(token_name, price_change, price, game_link):
+def create_fallback_alert_message(token_name, price_change, price):
     """Create a guaranteed short fallback alert message."""
     direction = "SURGE" if price_change > 0 else "DIP"
     emoji = "📈" if price_change > 0 else "📉"
@@ -160,7 +159,7 @@ def create_fallback_alert_message(token_name, price_change, price, game_link):
         f"🔔 ${token_name} {direction}: {price_change:+.2f}% {emoji}\n"
         f"Price: ${price:.2f}\n\n"
         f"The wasteland economy shifts.\n\n"
-        f"{game_link}"
+        f"{GAME_LINK}"
     )
 
 def post_price_alert(symbol, price_data, price_change):
@@ -202,7 +201,7 @@ def post_price_alert(symbol, price_data, price_change):
         # Ensure message fits Twitter limit with proper fallback
         if len(message) > TWITTER_CHAR_LIMIT:
             message = create_fallback_alert_message(
-                token_name, price_change, price_data['price'], GAME_LINK
+                token_name, price_change, price_data['price']
             )
         
         client.create_tweet(text=message)
@@ -248,7 +247,17 @@ def post_market_summary():
                 else:
                     break
             
-            message = "\n".join(truncated_lines) + footer
+            # Ensure we have at least one token, use simplified format if needed
+            if len(truncated_lines) < 2:  # Only header, no tokens
+                # Use a super simple format with just one token
+                if len(summary_lines) > 1:
+                    first_token = summary_lines[1]
+                    message = f"{summary_lines[0]}{first_token}\n\n{personality}\n\n{GAME_LINK}"
+                else:
+                    # No token data available at all
+                    message = f"{summary_lines[0]}No market data available.\n\n{personality}\n\n{GAME_LINK}"
+            else:
+                message = "\n".join(truncated_lines) + footer
         
         client.create_tweet(text=message)
         logging.info("Posted market summary")
