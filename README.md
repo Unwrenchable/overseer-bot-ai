@@ -185,6 +185,8 @@ Compatible with:
 
 ## 📚 Documentation
 
+**📑 [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) - Complete navigation guide for all docs**
+
 Comprehensive documentation available:
 
 ### Essential Guides
