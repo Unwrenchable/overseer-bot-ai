@@ -9,6 +9,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
 from flask import Flask, request
 import ccxt
+import re
+import threading
 
 # ------------------------------------------------------------
 # CONFIG & LOGGING
@@ -301,6 +303,16 @@ def token_scalper_alert():
 # TOKEN SAFETY & ANALYSIS MODULE
 # ------------------------------------------------------------
 TOKEN_SAFETY_CACHE = {}  # Cache for token safety checks
+TOKEN_SAFETY_CACHE_LOCK = threading.Lock()  # Thread safety for cache
+
+# Chain ID mapping for API calls
+CHAIN_IDS = {
+    'eth': '1',
+    'bsc': '56',
+    'polygon': '137',
+    'avalanche': '43114',
+    'arbitrum': '42161'
+}
 
 def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     """
@@ -314,11 +326,12 @@ def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     """
     cache_key = f"{chain}:{token_address}"
     
-    # Check cache first (valid for 1 hour)
-    if cache_key in TOKEN_SAFETY_CACHE:
-        cached = TOKEN_SAFETY_CACHE[cache_key]
-        if time.time() - cached['timestamp'] < 3600:
-            return cached['data']
+    # Check cache first (valid for 1 hour) with thread safety
+    with TOKEN_SAFETY_CACHE_LOCK:
+        if cache_key in TOKEN_SAFETY_CACHE:
+            cached = TOKEN_SAFETY_CACHE[cache_key]
+            if time.time() - cached['timestamp'] < 3600:
+                return cached['data']
     
     # Initialize result
     result = {
@@ -332,7 +345,8 @@ def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     
     try:
         # Use honeypot.is API for basic checks
-        honeypot_api = f"https://api.honeypot.is/v2/IsHoneypot?address={token_address}&chainID={'1' if chain == 'eth' else '56'}"
+        chain_id = CHAIN_IDS.get(chain, '1')
+        honeypot_api = f"https://api.honeypot.is/v2/IsHoneypot?address={token_address}&chainID={chain_id}"
         response = requests.get(honeypot_api, timeout=5)
         
         if response.status_code == 200:
@@ -365,11 +379,12 @@ def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     if result['risk_score'] > 70:
         result['is_safe'] = False
     
-    # Cache result
-    TOKEN_SAFETY_CACHE[cache_key] = {
-        'timestamp': time.time(),
-        'data': result
-    }
+    # Cache result with thread safety
+    with TOKEN_SAFETY_CACHE_LOCK:
+        TOKEN_SAFETY_CACHE[cache_key] = {
+            'timestamp': time.time(),
+            'data': result
+        }
     
     return result
 
@@ -396,10 +411,13 @@ def handle_rug_pull_alert(alert_data: dict):
         "The caps aren't worth the radiation here."
     ])
     
+    # Better address truncation: show start and end
+    address_display = f"{token_address[:6]}...{token_address[-4:]}" if len(token_address) > 10 else token_address
+    
     message = (
         f"{emoji} RUG PULL WARNING {emoji}\n\n"
         f"Token: {token_name}\n"
-        f"Contract: {token_address[:10]}...\n"
+        f"Contract: {address_display}\n"
         f"Severity: {severity.upper()}\n\n"
         f"{details}\n\n"
         f"{personality}\n\n"
@@ -1103,7 +1121,6 @@ def generate_contextual_response(username, message):
     # Check for token safety queries (contract address or "safe" keywords)
     if any(word in message_lower for word in ['safe', 'scam', 'rug', 'honeypot', 'check', 'verify']) or '0x' in message_lower:
         # Try to extract contract address
-        import re
         address_match = re.search(r'0x[a-fA-F0-9]{40}', message)
         
         if address_match:
