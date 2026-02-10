@@ -128,17 +128,33 @@ pip install -r requirements.txt
 All existing Twitter API credentials are already configured.
 No additional environment variables needed.
 
+Optional:
+- `PORT` - Web UI port (default: 5000)
+
 ### 3. Run the Bot
 ```bash
 python3 overseer_bot.py
 ```
 
-### 4. Monitor Logs
+The bot will:
+- Start the scheduler for automated tasks
+- Launch the monitoring UI web server
+- Begin monitoring Twitter mentions
+- Post activation message
+- Start price monitoring
+
+### 4. Access Monitoring UI
+Open your browser to:
+- Local: `http://localhost:5000`
+- Production: Your deployed server URL
+
+### 5. Monitor Logs
 The bot will log:
 - Price fetch successes/failures
 - Alert postings
 - Market summary postings
 - Any errors encountered
+- Web UI access (Flask logs)
 
 ## 💡 Usage Examples
 
@@ -208,6 +224,79 @@ Edit scheduler job intervals in the scheduler section.
 
 ### Add Token Pairs
 Any pair format supported by the exchange (BTC/USD, ETH/BTC, etc.).
+
+## 🖥️ Monitoring UI
+
+### Access the Dashboard
+The bot includes a web-based monitoring dashboard for manual oversight:
+
+**Development**: `http://localhost:5000/` (default port 5000, or set via `PORT` environment variable)
+**Production**: Must use HTTPS with authentication (see Security Notes below)
+
+### Dashboard Features
+1. **Real-Time Status**
+   - Bot uptime and health
+   - Active scheduler jobs count
+   - Cache statistics (price data, safety checks)
+
+2. **Token Price Monitoring**
+   - Current prices for all monitored tokens
+   - 24-hour price changes
+   - Last update timestamps
+   - Color-coded gains (green) and losses (red)
+
+3. **Scheduler Jobs**
+   - List of all scheduled tasks
+   - Next run time for each job
+   - Job status information
+
+4. **Activity Log**
+   - Recent bot activities (broadcasts, price alerts, mentions)
+   - Error tracking
+   - Activity timestamps
+   - Last 50 activities displayed
+
+5. **API Endpoints**
+   - `/api/status` - Bot status JSON
+   - `/api/prices` - Current price data JSON
+   - `/api/jobs` - Scheduler jobs JSON
+   - `/api/activities` - Recent activities JSON
+
+### UI Design
+- Vault-Tec themed dark interface
+- Fallout-inspired green/orange color scheme
+- Responsive design for mobile/desktop
+- Auto-refresh capability
+- Real-time monitoring without SSH access
+
+### Usage
+- **Local Development**: Visit `http://localhost:5000`
+- **Production**: Access via your deployed server URL
+- **Render.com**: Automatically available at your app's URL
+
+### Security Notes
+⚠️ **IMPORTANT: Production deployments require additional security measures**
+
+**Current State (Development)**:
+- Dashboard is read-only (no controls to post/modify)
+- No authentication implemented
+- Uses Flask development server (not production-ready)
+- Binds to all interfaces (0.0.0.0)
+- HTTP only (no encryption)
+
+**Required for Production**:
+1. **Add Authentication** - HTTP Basic Auth minimum, OAuth preferred
+2. **Enable HTTPS** - Use reverse proxy with SSL/TLS certificates
+3. **Production Server** - Replace Flask dev server with Gunicorn/uWSGI
+4. **Firewall Rules** - Restrict access to trusted IPs
+5. **Rate Limiting** - Prevent abuse
+
+**Data Exposure**:
+- Shows: Bot activities, price data, timestamps, scheduler jobs
+- Does NOT show: Twitter credentials, API keys, secrets
+- Consider operational data sensitive
+
+See `UI_GUIDE.md` for detailed security setup instructions.
 
 ## 📝 Key Technical Decisions
 
