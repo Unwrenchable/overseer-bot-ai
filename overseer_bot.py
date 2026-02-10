@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 
 GAME_LINK = "https://www.atomicfizzcaps.xyz"
-BOT_NAME = "OVERSEER V-BOT"
+BOT_NAME = "OVERSEER"
 VAULT_NUMBER = "77"
 
 # Configuration constants
@@ -1189,7 +1189,7 @@ THREAT_LEVELS = [
 # ------------------------------------------------------------
 # LLM SUPPORT - ENHANCED FOR OVERSEER PERSONALITY
 # ------------------------------------------------------------
-OVERSEER_SYSTEM_PROMPT = """You are the OVERSEER V-BOT, a sarcastic, glitchy, corporate-coded AI from Vault 77 in the Fallout universe.
+OVERSEER_SYSTEM_PROMPT = """You are the OVERSEER, a sarcastic, glitchy, corporate-coded AI from Vault 77 in the Fallout universe.
 
 PERSONALITY TRAITS:
 - Sarcastic and dry wit, like a tired corporate AI that has seen too much

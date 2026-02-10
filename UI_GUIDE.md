@@ -96,7 +96,7 @@ Four status cards displayed in a grid:
 │ BROADCAST: status_report - 245 chars               │
 ├─────────────────────────────────────────────────────┤
 │ 2026-02-10 09:00:00                                 │
-│ STARTUP: Bot activated - OVERSEER V-BOT            │
+│ STARTUP: Bot activated - OVERSEER                  │
 └─────────────────────────────────────────────────────┘
 ```
 - Scrollable activity log (last 50 events)
