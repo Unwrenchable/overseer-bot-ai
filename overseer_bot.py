@@ -208,9 +208,11 @@ def post_price_alert(symbol, price_data, price_change):
         
         client.create_tweet(text=message)
         logging.info(f"Posted price alert for {symbol}: {price_change:+.2f}%")
+        add_activity("PRICE_ALERT", f"{symbol} {price_change:+.2f}% - ${price_data['price']:.2f}")
         
     except tweepy.TweepyException as e:
         logging.error(f"Failed to post price alert: {e}")
+        add_activity("ERROR", f"Price alert failed for {symbol}: {str(e)}")
 
 def post_market_summary():
     """Post a market summary with multiple token prices."""
@@ -263,9 +265,11 @@ def post_market_summary():
         
         client.create_tweet(text=message)
         logging.info("Posted market summary")
+        add_activity("MARKET_SUMMARY", f"Posted summary with {len(MONITORED_TOKENS)} tokens")
         
     except tweepy.TweepyException as e:
         logging.error(f"Failed to post market summary: {e}")
+        add_activity("ERROR", f"Market summary failed: {str(e)}")
 
 # ------------------------------------------------------------
 # FLASK APP FOR WALLET EVENTS
@@ -298,6 +302,303 @@ def token_scalper_alert():
     except Exception as e:
         logging.error(f"Token scalper alert failed: {e}")
         return {"ok": False, "error": str(e)}, 500
+
+# ------------------------------------------------------------
+# MONITORING UI ROUTES
+# ------------------------------------------------------------
+BOT_START_TIME = datetime.now()
+RECENT_ACTIVITIES = []
+
+def add_activity(activity_type, description):
+    """Track bot activities for monitoring UI"""
+    global RECENT_ACTIVITIES
+    RECENT_ACTIVITIES.append({
+        'timestamp': datetime.now().isoformat(),
+        'type': activity_type,
+        'description': description
+    })
+    # Keep only last 50 activities
+    if len(RECENT_ACTIVITIES) > 50:
+        RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
+
+@app.route("/")
+def monitoring_dashboard():
+    """Main monitoring dashboard"""
+    from flask import render_template_string
+    
+    # Calculate uptime
+    uptime = datetime.now() - BOT_START_TIME
+    uptime_str = f"{uptime.days}d {uptime.seconds//3600}h {(uptime.seconds//60)%60}m"
+    
+    # Get price cache data
+    price_cache = load_price_cache()
+    
+    # Get scheduler jobs info
+    jobs_info = []
+    for job in scheduler.get_jobs():
+        jobs_info.append({
+            'id': job.id,
+            'name': job.name,
+            'next_run': job.next_run_time.isoformat() if job.next_run_time else 'N/A'
+        })
+    
+    template = '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Overseer Bot - Monitoring Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                font-family: 'Courier New', monospace;
+                background: #1a1a1a;
+                color: #00ff00;
+                padding: 20px;
+                margin: 0;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            h1, h2 {
+                color: #ffaa00;
+                text-shadow: 0 0 10px #ffaa00;
+            }
+            .header {
+                text-align: center;
+                border: 2px solid #ffaa00;
+                padding: 20px;
+                margin-bottom: 30px;
+                background: #0a0a0a;
+            }
+            .section {
+                background: #0a0a0a;
+                border: 1px solid #00ff00;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 5px;
+            }
+            .status-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            .status-card {
+                background: #0f0f0f;
+                border: 1px solid #00aa00;
+                padding: 15px;
+                border-radius: 5px;
+            }
+            .status-card h3 {
+                margin-top: 0;
+                color: #00ff00;
+                font-size: 14px;
+            }
+            .status-card .value {
+                font-size: 24px;
+                color: #ffaa00;
+                font-weight: bold;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+            th, td {
+                text-align: left;
+                padding: 8px;
+                border-bottom: 1px solid #333;
+            }
+            th {
+                color: #ffaa00;
+                font-weight: bold;
+            }
+            .positive { color: #00ff00; }
+            .negative { color: #ff4444; }
+            .activity-log {
+                max-height: 400px;
+                overflow-y: auto;
+                background: #0f0f0f;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            .activity-item {
+                padding: 5px;
+                margin-bottom: 5px;
+                border-left: 3px solid #00aa00;
+                padding-left: 10px;
+            }
+            .activity-time {
+                color: #888;
+                font-size: 12px;
+            }
+            .refresh-btn {
+                background: #ffaa00;
+                color: #000;
+                border: none;
+                padding: 10px 20px;
+                cursor: pointer;
+                border-radius: 5px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                margin: 10px 0;
+            }
+            .refresh-btn:hover {
+                background: #ff8800;
+            }
+            a {
+                color: #00ff00;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>☢️ VAULT-TEC OVERSEER MONITORING TERMINAL ☢️</h1>
+                <p>VAULT 77 - REAL-TIME STATUS</p>
+                <button class="refresh-btn" onclick="location.reload()">REFRESH DATA</button>
+            </div>
+
+            <div class="status-grid">
+                <div class="status-card">
+                    <h3>UPTIME</h3>
+                    <div class="value">{{ uptime }}</div>
+                </div>
+                <div class="status-card">
+                    <h3>SCHEDULER STATUS</h3>
+                    <div class="value">{{ jobs_count }} JOBS</div>
+                </div>
+                <div class="status-card">
+                    <h3>PRICE CACHE</h3>
+                    <div class="value">{{ price_cache_count }}</div>
+                </div>
+                <div class="status-card">
+                    <h3>SAFETY CACHE</h3>
+                    <div class="value">{{ safety_cache_count }}</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📊 TOKEN PRICE MONITORING</h2>
+                <table>
+                    <tr>
+                        <th>Token</th>
+                        <th>Price</th>
+                        <th>24h Change</th>
+                        <th>Last Updated</th>
+                    </tr>
+                    {% for token, data in price_data.items() %}
+                    <tr>
+                        <td>{{ token }}</td>
+                        <td>${{ "%.2f"|format(data.price) if data.price else 'N/A' }}</td>
+                        <td class="{{ 'positive' if data.change_24h > 0 else 'negative' }}">
+                            {{ "%+.2f"|format(data.change_24h) if data.change_24h else 'N/A' }}%
+                        </td>
+                        <td>{{ data.timestamp[:19] if data.timestamp else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>⏰ SCHEDULED JOBS</h2>
+                <table>
+                    <tr>
+                        <th>Job Name</th>
+                        <th>Next Run</th>
+                    </tr>
+                    {% for job in jobs %}
+                    <tr>
+                        <td>{{ job.name }}</td>
+                        <td>{{ job.next_run[:19] if job.next_run != 'N/A' else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📝 RECENT ACTIVITY</h2>
+                <div class="activity-log">
+                    {% for activity in activities %}
+                    <div class="activity-item">
+                        <div class="activity-time">{{ activity.timestamp[:19] }}</div>
+                        <div><strong>{{ activity.type }}:</strong> {{ activity.description }}</div>
+                    </div>
+                    {% endfor %}
+                    {% if not activities %}
+                    <p>No recent activities logged.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🔗 API ENDPOINTS</h2>
+                <ul>
+                    <li><a href="/api/status">/api/status</a> - Bot status JSON</li>
+                    <li><a href="/api/prices">/api/prices</a> - Current prices JSON</li>
+                    <li><a href="/api/jobs">/api/jobs</a> - Scheduler jobs JSON</li>
+                    <li><a href="/api/activities">/api/activities</a> - Recent activities JSON</li>
+                    <li>POST /overseer-event - Webhook for events</li>
+                    <li>POST /token-scalper-alert - Webhook for alerts</li>
+                </ul>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    
+    return render_template_string(
+        template,
+        uptime=uptime_str,
+        jobs_count=len(jobs_info),
+        price_cache_count=len(price_cache),
+        safety_cache_count=len(TOKEN_SAFETY_CACHE),
+        price_data=price_cache,
+        jobs=jobs_info,
+        activities=list(reversed(RECENT_ACTIVITIES))
+    )
+
+@app.route("/api/status")
+def api_status():
+    """JSON endpoint for bot status"""
+    uptime = datetime.now() - BOT_START_TIME
+    return {
+        "status": "online",
+        "uptime_seconds": uptime.total_seconds(),
+        "bot_name": BOT_NAME,
+        "vault_number": VAULT_NUMBER,
+        "start_time": BOT_START_TIME.isoformat(),
+        "scheduler_running": scheduler.running,
+        "jobs_count": len(scheduler.get_jobs())
+    }
+
+@app.route("/api/prices")
+def api_prices():
+    """JSON endpoint for current prices"""
+    price_cache = load_price_cache()
+    return {
+        "prices": price_cache,
+        "monitored_tokens": list(MONITORED_TOKENS.keys())
+    }
+
+@app.route("/api/jobs")
+def api_jobs():
+    """JSON endpoint for scheduler jobs"""
+    jobs_info = []
+    for job in scheduler.get_jobs():
+        jobs_info.append({
+            'id': job.id,
+            'name': job.name,
+            'next_run': job.next_run_time.isoformat() if job.next_run_time else None,
+            'trigger': str(job.trigger)
+        })
+    return {"jobs": jobs_info}
+
+@app.route("/api/activities")
+def api_activities():
+    """JSON endpoint for recent activities"""
+    return {"activities": list(reversed(RECENT_ACTIVITIES))}
 
 # ------------------------------------------------------------
 # TOKEN SAFETY & ANALYSIS MODULE
@@ -1027,9 +1328,11 @@ def overseer_broadcast():
         
         client.create_tweet(text=message, media_ids=media_ids)
         logging.info(f"Broadcast sent: {broadcast_type}")
+        add_activity("BROADCAST", f"{broadcast_type} - {len(message)} chars")
         
     except tweepy.TweepyException as e:
         logging.error(f"Broadcast failed: {e}")
+        add_activity("ERROR", f"Broadcast failed: {str(e)}")
 
 def overseer_respond():
     """Respond to mentions with personality-driven responses."""
@@ -1074,8 +1377,10 @@ def overseer_respond():
                 client.like(mention.id)
                 processed.add(str(mention.id))
                 logging.info(f"Replied to @{username}")
+                add_activity("MENTION_REPLY", f"@{username}: {user_message[:50]}...")
             except tweepy.TweepyException as e:
                 logging.error(f"Reply failed: {e}")
+                add_activity("ERROR", f"Reply failed to @{username}: {str(e)}")
 
         save_json_set(processed, PROCESSED_MENTIONS_FILE)
 
@@ -1321,8 +1626,24 @@ try:
         )[:TWITTER_CHAR_LIMIT]
     client.create_tweet(text=activation_msg)
     logging.info("Activation message posted")
+    add_activity("STARTUP", f"Bot activated - {BOT_NAME}")
 except tweepy.TweepyException as e:
     logging.warning(f"Activation tweet failed (may be duplicate): {e}")
+    add_activity("ERROR", f"Activation tweet failed: {str(e)}")
+
+# ------------------------------------------------------------
+# FLASK APP THREAD
+# ------------------------------------------------------------
+def run_flask_app():
+    """Run Flask app in a separate thread."""
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Start Flask in a separate thread
+flask_thread = threading.Thread(target=run_flask_app, daemon=True)
+flask_thread.start()
+logging.info(f"Flask monitoring UI started on port {os.getenv('PORT', 5000)}")
+add_activity("STARTUP", f"Monitoring UI available at http://0.0.0.0:{os.getenv('PORT', 5000)}")
 
 # ------------------------------------------------------------
 # MAIN LOOP
