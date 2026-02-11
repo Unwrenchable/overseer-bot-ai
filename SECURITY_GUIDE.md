@@ -2,6 +2,13 @@
 
 This guide explains how to secure your Overseer Bot AI deployment with proper authentication.
 
+## ⚠️ CRITICAL: About .env.example
+
+**The `.env.example` file is a TEMPLATE that is committed to Git.**
+- It contains NO actual secrets, only placeholders and instructions
+- NEVER put actual passwords, API keys, or private keys in .env.example
+- Always create your own `.env` file from this template for actual secrets
+
 ## Overview
 
 The Overseer Bot now includes two layers of security:
@@ -13,9 +20,13 @@ The Overseer Bot now includes two layers of security:
 
 ### 1. Copy Environment File
 
+**Important:** The `.env.example` is a template. Create your own `.env` file:
+
 ```bash
 cp .env.example .env
 ```
+
+The `.env` file is in `.gitignore` and will NOT be committed to Git.
 
 ### 2. Generate Strong Credentials
 
@@ -29,13 +40,13 @@ export WEBHOOK_API_KEY=$(openssl rand -hex 32)
 echo "WEBHOOK_API_KEY=$WEBHOOK_API_KEY"
 ```
 
-### 3. Edit .env File
+### 3. Edit Your .env File (Not .env.example!)
 
 ```bash
 nano .env  # or use your preferred editor
 ```
 
-Add your generated values:
+Add your generated values to **your .env file**:
 
 ```env
 # Admin authentication
@@ -45,6 +56,11 @@ ADMIN_PASSWORD=<paste generated password>
 # Webhook API key
 WEBHOOK_API_KEY=<paste generated key>
 ```
+
+**⚠️ Remember:** 
+- Edit `.env` (your local copy) - NOT `.env.example` (the template)
+- `.env` is in `.gitignore` and safe from accidental commits
+- `.env.example` should remain with placeholder values only
 
 ## What's Protected?
 
@@ -116,7 +132,19 @@ Edit Token-scalper's `config.json`:
 }
 ```
 
-**Important**: Use the same `WEBHOOK_API_KEY` value from your Overseer Bot's `.env` file.
+**⚠️ CRITICAL:** The `overseer_api_key` in Token-scalper's config MUST match the `WEBHOOK_API_KEY` in Overseer Bot.
+
+**How to set matching keys:**
+1. Generate one key: `openssl rand -hex 32`
+2. Use the SAME key in BOTH places:
+   - In Overseer Bot's `.env` file: `WEBHOOK_API_KEY=<your_generated_key_here>`
+   - In Token-scalper's `config.json`: `"overseer_api_key": "<your_generated_key_here>"`
+3. The keys must be identical for webhooks to work
+
+**⚠️ IMPORTANT:** 
+- NEVER commit `config.json` with actual keys to Git
+- For cloud deployments, use environment variables instead of config files
+- Token-scalper also supports environment variables for sensitive data
 
 ### Test Webhook
 
@@ -130,10 +158,23 @@ curl -X POST http://your-server:5000/token-scalper-alert \
 
 ## Deployment Platforms
 
+### ⚠️ Important: Never Commit Secrets!
+
+**For ALL cloud deployments:**
+- Use your platform's environment variables feature
+- DO NOT put actual secrets in .env files or deployment configs
+- DO NOT commit .env or config files with actual keys to Git
+
 ### Render.com
 
-1. Go to your service's **Environment** tab
-2. Add environment variables:
+**⚠️ Note:** The `render.yaml` file uses `sync: false` for sensitive variables. This means:
+- Variables are NOT auto-populated from the file
+- You MUST set them manually in Render's dashboard
+- This prevents accidental exposure of secrets in Git
+
+**Setup:**
+1. Go to your service's **Environment** tab in Render dashboard
+2. Add environment variables manually:
    ```
    ADMIN_USERNAME=your_username
    ADMIN_PASSWORD=your_strong_password
@@ -141,6 +182,12 @@ curl -X POST http://your-server:5000/token-scalper-alert \
    ```
 3. Click **Save Changes**
 4. Your service will automatically restart
+
+**Generate secure values first:**
+```bash
+openssl rand -base64 32  # For ADMIN_PASSWORD
+openssl rand -hex 32     # For WEBHOOK_API_KEY
+```
 
 ### Heroku
 

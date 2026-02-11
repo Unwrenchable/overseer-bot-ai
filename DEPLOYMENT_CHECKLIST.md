@@ -2,15 +2,24 @@
 
 Use this checklist to ensure secure deployment of the Overseer Bot AI with authentication.
 
+## ⚠️ Security First: About .env Files
+
+**CRITICAL:** Before you start:
+- The `.env.example` file in the repository is a **TEMPLATE** (committed to Git)
+- `.env.example` contains NO actual secrets, only placeholders
+- NEVER put actual secrets in `.env.example`
+- ALWAYS create a separate `.env` file for actual secrets (gitignored, NOT committed)
+
 ## Pre-Deployment (Local Testing)
 
-- [ ] Copy `.env.example` to `.env`
+- [ ] Copy `.env.example` to `.env` (create your own copy)
 - [ ] Generate strong credentials:
   ```bash
   openssl rand -base64 32  # For ADMIN_PASSWORD
   openssl rand -hex 32     # For WEBHOOK_API_KEY
   ```
-- [ ] Fill in all required environment variables in `.env`
+- [ ] Fill in all required environment variables in YOUR `.env` file (not .env.example!)
+- [ ] Verify `.env` is in `.gitignore` (it is!)
 - [ ] Test locally:
   ```bash
   python overseer_bot.py
@@ -19,6 +28,7 @@ Use this checklist to ensure secure deployment of the Overseer Bot AI with authe
 - [ ] Test dashboard access (should require login)
 - [ ] Test API endpoints (should require auth)
 - [ ] Test webhooks (should require API key if configured)
+- [ ] VERIFY `.env` is not committed: `git status` (should not show .env)
 
 ## Production Deployment
 

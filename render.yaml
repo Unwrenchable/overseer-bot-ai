@@ -1,3 +1,19 @@
+# ============================================================
+# RENDER.COM DEPLOYMENT CONFIGURATION
+# ============================================================
+# ⚠️ SECURITY NOTE: This file is committed to Git
+# - All sensitive variables use "sync: false"
+# - You MUST set these manually in Render's dashboard
+# - NEVER change "sync: false" to "sync: true" or add values for sensitive vars
+# - This prevents accidental exposure of secrets in Git
+# 
+# Variables with "sync: false" require manual setup in Render dashboard:
+# 1. Go to your service > Environment tab
+# 2. Add each variable with your actual secret values
+# 3. Save changes to apply
+# 
+# Non-sensitive variables (like endpoints) can have "value:" set here
+# ============================================================
 services:
   - type: web
     name: overseer-bot
@@ -7,6 +23,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python overseer_bot.py
     envVars:
+      # Twitter API Credentials - MUST be set in Render dashboard
       - key: CONSUMER_KEY
         sync: false
       - key: CONSUMER_SECRET
@@ -17,5 +34,31 @@ services:
         sync: false
       - key: BEARER_TOKEN
         sync: false
+      
+      # Optional: Hugging Face AI - Set in Render dashboard if needed
       - key: HUGGING_FACE_TOKEN
         sync: false
+      
+      # Admin Authentication - CRITICAL: Set strong password in Render dashboard
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false  # MUST set secure password in dashboard!
+      
+      # Webhook API Key - Set in Render dashboard, must match Token-scalper config
+      - key: WEBHOOK_API_KEY
+        sync: false
+      
+      # Wallet Features - Optional: Set in Render dashboard if using wallet features
+      - key: ENABLE_WALLET_UI
+        value: "true"
+      - key: SOLANA_PRIVATE_KEY
+        sync: false  # CRITICAL: NEVER commit private keys!
+      - key: SOLANA_RPC_ENDPOINT
+        value: "https://api.mainnet-beta.solana.com"
+      - key: ETH_PRIVATE_KEY
+        sync: false  # CRITICAL: NEVER commit private keys!
+      - key: ETH_RPC_ENDPOINT
+        value: "https://eth.public-rpc.com"
+      - key: BSC_RPC_ENDPOINT
+        value: "https://bsc-dataseed1.binance.org"
