@@ -7,11 +7,26 @@ import json
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
 import threading
+
+# Wallet integrations (optional imports)
+WALLET_ENABLED = False
+try:
+    from solana.rpc.api import Client as SolanaClient
+    from solders.keypair import Keypair
+    from solders.pubkey import Pubkey
+    from solders.transaction import Transaction
+    import base58
+    from web3 import Web3
+    WALLET_ENABLED = True
+    logging.info("Wallet dependencies loaded successfully")
+except ImportError as e:
+    logging.warning(f"Wallet dependencies not available: {e}. Wallet features will be disabled.")
+    WALLET_ENABLED = False
 
 # ------------------------------------------------------------
 # CONFIG & LOGGING
@@ -58,6 +73,48 @@ if ADMIN_PASSWORD == 'vault77secure':
 
 # Webhook API key for external services (like Token-scalper)
 WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required
+
+# ------------------------------------------------------------
+# WALLET CONFIGURATION (Optional)
+# ------------------------------------------------------------
+ENABLE_WALLET_UI = os.getenv('ENABLE_WALLET_UI', 'true').lower() == 'true'
+
+# Solana configuration
+SOLANA_PRIVATE_KEY = os.getenv('SOLANA_PRIVATE_KEY', '')
+SOLANA_RPC_ENDPOINT = os.getenv('SOLANA_RPC_ENDPOINT', 'https://api.mainnet-beta.solana.com')
+
+# Ethereum/BSC configuration
+ETH_PRIVATE_KEY = os.getenv('ETH_PRIVATE_KEY', '')
+ETH_RPC_ENDPOINT = os.getenv('ETH_RPC_ENDPOINT', 'https://eth.public-rpc.com')
+BSC_RPC_ENDPOINT = os.getenv('BSC_RPC_ENDPOINT', 'https://bsc-dataseed1.binance.org')
+
+# Initialize wallet clients if enabled and credentials provided
+solana_client = None
+solana_keypair = None
+eth_w3 = None
+bsc_w3 = None
+wallet_address = None
+eth_wallet_address = None
+
+if WALLET_ENABLED and ENABLE_WALLET_UI:
+    try:
+        if SOLANA_PRIVATE_KEY:
+            solana_client = SolanaClient(SOLANA_RPC_ENDPOINT)
+            # Parse private key (base58 encoded)
+            private_key_bytes = base58.b58decode(SOLANA_PRIVATE_KEY)
+            solana_keypair = Keypair.from_bytes(private_key_bytes)
+            wallet_address = str(solana_keypair.pubkey())
+            logging.info(f"✅ Solana wallet initialized: {wallet_address[:8]}...{wallet_address[-8:]}")
+        
+        if ETH_PRIVATE_KEY:
+            eth_w3 = Web3(Web3.HTTPProvider(ETH_RPC_ENDPOINT))
+            bsc_w3 = Web3(Web3.HTTPProvider(BSC_RPC_ENDPOINT))
+            eth_account = eth_w3.eth.account.from_key(ETH_PRIVATE_KEY)
+            eth_wallet_address = eth_account.address
+            logging.info(f"✅ ETH/BSC wallet initialized: {eth_wallet_address[:8]}...{eth_wallet_address[-8:]}")
+    except Exception as e:
+        logging.error(f"Failed to initialize wallet: {e}")
+        WALLET_ENABLED = False
 
 client = tweepy.Client(
     consumer_key=CONSUMER_KEY,
@@ -490,9 +547,10 @@ def monitoring_dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Overseer Bot - Monitoring Dashboard</title>
+        <title>Overseer Bot - Control Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
+            * { box-sizing: border-box; }
             body {
                 font-family: 'Courier New', monospace;
                 background: #1a1a1a;
@@ -501,10 +559,10 @@ def monitoring_dashboard():
                 margin: 0;
             }
             .container {
-                max-width: 1200px;
+                max-width: 1400px;
                 margin: 0 auto;
             }
-            h1, h2 {
+            h1, h2, h3 {
                 color: #ffaa00;
                 text-shadow: 0 0 10px #ffaa00;
             }
@@ -514,6 +572,35 @@ def monitoring_dashboard():
                 padding: 20px;
                 margin-bottom: 30px;
                 background: #0a0a0a;
+            }
+            .nav-tabs {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #ffaa00;
+                padding-bottom: 10px;
+            }
+            .tab-btn {
+                background: #0a0a0a;
+                border: 1px solid #00aa00;
+                color: #00ff00;
+                padding: 10px 20px;
+                cursor: pointer;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                border-radius: 5px 5px 0 0;
+            }
+            .tab-btn:hover { background: #1a3a1a; }
+            .tab-btn.active {
+                background: #ffaa00;
+                color: #000;
+                border-color: #ffaa00;
+            }
+            .tab-content {
+                display: none;
+            }
+            .tab-content.active {
+                display: block;
             }
             .section {
                 background: #0a0a0a;
@@ -543,6 +630,7 @@ def monitoring_dashboard():
                 font-size: 24px;
                 color: #ffaa00;
                 font-weight: bold;
+                word-break: break-all;
             }
             table {
                 width: 100%;
@@ -560,6 +648,61 @@ def monitoring_dashboard():
             }
             .positive { color: #00ff00; }
             .negative { color: #ff4444; }
+            .btn {
+                background: #ffaa00;
+                color: #000;
+                border: none;
+                padding: 10px 20px;
+                cursor: pointer;
+                border-radius: 5px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                margin: 10px 5px;
+            }
+            .btn:hover { background: #ff8800; }
+            .btn-secondary {
+                background: #00aa00;
+                color: #fff;
+            }
+            .btn-secondary:hover { background: #008800; }
+            .form-group {
+                margin-bottom: 15px;
+            }
+            .form-group label {
+                display: block;
+                color: #ffaa00;
+                margin-bottom: 5px;
+            }
+            .form-group input, .form-group select {
+                width: 100%;
+                padding: 10px;
+                background: #0f0f0f;
+                border: 1px solid #00aa00;
+                color: #00ff00;
+                font-family: 'Courier New', monospace;
+                border-radius: 3px;
+            }
+            .result-box {
+                background: #0f0f0f;
+                border: 1px solid #00aa00;
+                padding: 15px;
+                margin-top: 15px;
+                border-radius: 5px;
+                min-height: 100px;
+            }
+            .wallet-info {
+                background: #0f1f0f;
+                padding: 10px;
+                border-left: 3px solid #00ff00;
+                margin-bottom: 10px;
+            }
+            .warning-box {
+                background: #2a1a00;
+                border: 2px solid #ffaa00;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 5px;
+            }
             .activity-log {
                 max-height: 400px;
                 overflow-y: auto;
@@ -577,120 +720,326 @@ def monitoring_dashboard():
                 color: #888;
                 font-size: 12px;
             }
-            .refresh-btn {
-                background: #ffaa00;
-                color: #000;
-                border: none;
-                padding: 10px 20px;
-                cursor: pointer;
-                border-radius: 5px;
-                font-family: 'Courier New', monospace;
-                font-weight: bold;
-                margin: 10px 0;
-            }
-            .refresh-btn:hover {
-                background: #ff8800;
-            }
-            a {
-                color: #00ff00;
-            }
+            a { color: #00ff00; }
         </style>
+        <script>
+            function showTab(tabName) {
+                // Hide all tabs
+                const tabs = document.querySelectorAll('.tab-content');
+                tabs.forEach(tab => tab.classList.remove('active'));
+                
+                // Remove active from all buttons
+                const btns = document.querySelectorAll('.tab-btn');
+                btns.forEach(btn => btn.classList.remove('active'));
+                
+                // Show selected tab
+                document.getElementById(tabName).classList.add('active');
+                event.target.classList.add('active');
+            }
+            
+            async function checkWalletStatus() {
+                try {
+                    // Browser will automatically send HTTP Basic Auth credentials
+                    const response = await fetch('/api/wallet/status', {
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
+                    const resultBox = document.getElementById('wallet-status-result');
+                    resultBox.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } catch (error) {
+                    document.getElementById('wallet-status-result').innerHTML = 
+                        '<span class="negative">Error: ' + error.message + '</span>';
+                }
+            }
+            
+            async function checkToken() {
+                const address = document.getElementById('token-address').value;
+                const chain = document.getElementById('token-chain').value;
+                
+                if (!address) {
+                    alert('Please enter a token address');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/wallet/check-token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ token_address: address, chain: chain })
+                    });
+                    const data = await response.json();
+                    const resultBox = document.getElementById('token-check-result');
+                    
+                    let resultHTML = '<h3>Token Safety Analysis</h3>';
+                    if (data.is_safe) {
+                        resultHTML += '<p class="positive">✅ Token appears SAFE</p>';
+                    } else {
+                        resultHTML += '<p class="negative">⚠️ Token has RISKS</p>';
+                    }
+                    resultHTML += '<p>Risk Score: <strong>' + data.risk_score + '/100</strong></p>';
+                    
+                    if (data.warnings && data.warnings.length > 0) {
+                        resultHTML += '<p><strong>Warnings:</strong></p><ul>';
+                        data.warnings.forEach(w => {
+                            resultHTML += '<li class="negative">' + w + '</li>';
+                        });
+                        resultHTML += '</ul>';
+                    }
+                    
+                    if (data.honeypot) {
+                        resultHTML += '<p class="negative"><strong>🛑 HONEYPOT DETECTED!</strong></p>';
+                    }
+                    
+                    resultBox.innerHTML = resultHTML;
+                } catch (error) {
+                    document.getElementById('token-check-result').innerHTML = 
+                        '<span class="negative">Error: ' + error.message + '</span>';
+                }
+            }
+            
+            async function checkPrice() {
+                const symbol = document.getElementById('price-symbol').value;
+                const exchange = document.getElementById('price-exchange').value;
+                
+                if (!symbol) {
+                    alert('Please enter a token symbol (e.g., SOL/USDT)');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/price/check', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ symbol: symbol, exchange: exchange })
+                    });
+                    const data = await response.json();
+                    const resultBox = document.getElementById('price-check-result');
+                    
+                    if (data.error) {
+                        resultBox.innerHTML = '<span class="negative">Error: ' + data.error + '</span>';
+                    } else {
+                        let changeClass = data.change_24h >= 0 ? 'positive' : 'negative';
+                        let resultHTML = '<h3>' + data.symbol + ' on ' + data.exchange + '</h3>';
+                        resultHTML += '<p><strong>Price:</strong> $' + (data.price || 'N/A') + '</p>';
+                        resultHTML += '<p><strong>24h Change:</strong> <span class="' + changeClass + '">';
+                        resultHTML += (data.change_24h ? data.change_24h.toFixed(2) + '%' : 'N/A') + '</span></p>';
+                        resultHTML += '<p><strong>24h High:</strong> $' + (data.high_24h || 'N/A') + '</p>';
+                        resultHTML += '<p><strong>24h Low:</strong> $' + (data.low_24h || 'N/A') + '</p>';
+                        resultHTML += '<p><strong>24h Volume:</strong> ' + (data.volume_24h || 'N/A') + '</p>';
+                        resultBox.innerHTML = resultHTML;
+                    }
+                } catch (error) {
+                    document.getElementById('price-check-result').innerHTML = 
+                        '<span class="negative">Error: ' + error.message + '</span>';
+                }
+            }
+        </script>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>☢️ VAULT-TEC OVERSEER MONITORING TERMINAL ☢️</h1>
-                <p>VAULT 77 - REAL-TIME STATUS</p>
-                <button class="refresh-btn" onclick="location.reload()">REFRESH DATA</button>
+                <h1>☢️ VAULT-TEC OVERSEER CONTROL TERMINAL ☢️</h1>
+                <p>VAULT 77 - MANUAL & AUTOMATED CONTROLS</p>
+                <button class="btn" onclick="location.reload()">REFRESH DATA</button>
             </div>
 
-            <div class="status-grid">
-                <div class="status-card">
-                    <h3>UPTIME</h3>
-                    <div class="value">{{ uptime }}</div>
-                </div>
-                <div class="status-card">
-                    <h3>SCHEDULER STATUS</h3>
-                    <div class="value">{{ jobs_count }} JOBS</div>
-                </div>
-                <div class="status-card">
-                    <h3>PRICE CACHE</h3>
-                    <div class="value">{{ price_cache_count }}</div>
-                </div>
-                <div class="status-card">
-                    <h3>SAFETY CACHE</h3>
-                    <div class="value">{{ safety_cache_count }}</div>
-                </div>
+            <div class="nav-tabs">
+                <button class="tab-btn active" onclick="showTab('monitoring-tab')">📊 MONITORING</button>
+                <button class="tab-btn" onclick="showTab('wallet-tab')">💰 WALLET</button>
+                <button class="tab-btn" onclick="showTab('tools-tab')">🔧 TOOLS</button>
+                <button class="tab-btn" onclick="showTab('api-tab')">🔗 API</button>
             </div>
 
-            <div class="section">
-                <h2>📊 TOKEN PRICE MONITORING</h2>
-                <table>
-                    <tr>
-                        <th>Token</th>
-                        <th>Price</th>
-                        <th>24h Change</th>
-                        <th>Last Updated</th>
-                    </tr>
-                    {% for token, data in price_data.items() %}
-                    <tr>
-                        <td>{{ token }}</td>
-                        <td>${{ "%.2f"|format(data.price) if data.price else 'N/A' }}</td>
-                        <td class="{{ 'positive' if data.change_24h > 0 else 'negative' }}">
-                            {{ "%+.2f"|format(data.change_24h) if data.change_24h else 'N/A' }}%
-                        </td>
-                        <td>{{ data.timestamp[:19] if data.timestamp else 'N/A' }}</td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
-
-            <div class="section">
-                <h2>⏰ SCHEDULED JOBS</h2>
-                <table>
-                    <tr>
-                        <th>Job Name</th>
-                        <th>Next Run</th>
-                    </tr>
-                    {% for job in jobs %}
-                    <tr>
-                        <td>{{ job.name }}</td>
-                        <td>{{ job.next_run[:19] if job.next_run != 'N/A' else 'N/A' }}</td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
-
-            <div class="section">
-                <h2>📝 RECENT ACTIVITY</h2>
-                <div class="activity-log">
-                    {% for activity in activities %}
-                    <div class="activity-item">
-                        <div class="activity-time">{{ activity.timestamp[:19] }}</div>
-                        <div><strong>{{ activity.type }}:</strong> {{ activity.description }}</div>
+            <!-- MONITORING TAB -->
+            <div id="monitoring-tab" class="tab-content active">
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h3>UPTIME</h3>
+                        <div class="value">{{ uptime }}</div>
                     </div>
-                    {% endfor %}
-                    {% if not activities %}
-                    <p>No recent activities logged.</p>
-                    {% endif %}
+                    <div class="status-card">
+                        <h3>SCHEDULER STATUS</h3>
+                        <div class="value">{{ jobs_count }} JOBS</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>PRICE CACHE</h3>
+                        <div class="value">{{ price_cache_count }}</div>
+                    </div>
+                    <div class="status-card">
+                        <h3>SAFETY CACHE</h3>
+                        <div class="value">{{ safety_cache_count }}</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>📊 TOKEN PRICE MONITORING</h2>
+                    <table>
+                        <tr>
+                            <th>Token</th>
+                            <th>Price</th>
+                            <th>24h Change</th>
+                            <th>Last Updated</th>
+                        </tr>
+                        {% for token, data in price_data.items() %}
+                        <tr>
+                            <td>{{ token }}</td>
+                            <td>${{ "%.2f"|format(data.price) if data.price else 'N/A' }}</td>
+                            <td class="{{ 'positive' if data.change_24h > 0 else 'negative' }}">
+                                {{ "%+.2f"|format(data.change_24h) if data.change_24h else 'N/A' }}%
+                            </td>
+                            <td>{{ data.timestamp[:19] if data.timestamp else 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+
+                <div class="section">
+                    <h2>⏰ SCHEDULED JOBS</h2>
+                    <table>
+                        <tr>
+                            <th>Job Name</th>
+                            <th>Next Run</th>
+                        </tr>
+                        {% for job in jobs %}
+                        <tr>
+                            <td>{{ job.name }}</td>
+                            <td>{{ job.next_run[:19] if job.next_run != 'N/A' else 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+
+                <div class="section">
+                    <h2>📝 RECENT ACTIVITY</h2>
+                    <div class="activity-log">
+                        {% for activity in activities %}
+                        <div class="activity-item">
+                            <div class="activity-time">{{ activity.timestamp[:19] }}</div>
+                            <div><strong>{{ activity.type }}:</strong> {{ activity.description }}</div>
+                        </div>
+                        {% endfor %}
+                        {% if not activities %}
+                        <p>No recent activities logged.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
-            <div class="section">
-                <h2>🔗 API ENDPOINTS</h2>
-                <ul>
-                    <li><a href="/api/status">/api/status</a> - Bot status JSON</li>
-                    <li><a href="/api/prices">/api/prices</a> - Current prices JSON</li>
-                    <li><a href="/api/jobs">/api/jobs</a> - Scheduler jobs JSON</li>
-                    <li><a href="/api/activities">/api/activities</a> - Recent activities JSON</li>
-                    <li>POST /overseer-event - Webhook for events</li>
-                    <li>POST /token-scalper-alert - Webhook for alerts</li>
-                </ul>
+            <!-- WALLET TAB -->
+            <div id="wallet-tab" class="tab-content">
+                {% if wallet_enabled %}
+                <div class="section">
+                    <h2>💰 WALLET STATUS</h2>
+                    <p>Connected wallets and balances. Click to refresh balance information.</p>
+                    <button class="btn" onclick="checkWalletStatus()">🔄 CHECK WALLET STATUS</button>
+                    <div id="wallet-status-result" class="result-box">
+                        <p>Click "CHECK WALLET STATUS" to view wallet information...</p>
+                    </div>
+                </div>
+                {% else %}
+                <div class="warning-box">
+                    <h3>⚠️ WALLET FEATURES DISABLED</h3>
+                    <p>Wallet functionality is not enabled. To enable wallet features:</p>
+                    <ol>
+                        <li>Install required dependencies: <code>pip install solana solders base58 web3</code></li>
+                        <li>Add wallet configuration to your .env file</li>
+                        <li>Set ENABLE_WALLET_UI=true</li>
+                        <li>Restart the application</li>
+                    </ol>
+                    <p>See TOKEN_SCALPER_SETUP.md for detailed wallet configuration instructions.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- TOOLS TAB -->
+            <div id="tools-tab" class="tab-content">
+                <div class="section">
+                    <h2>🔍 TOKEN SAFETY CHECKER</h2>
+                    <p>Check if a token is safe or a potential honeypot/scam.</p>
+                    <div class="form-group">
+                        <label>Token Address:</label>
+                        <input type="text" id="token-address" placeholder="0x1234567890123456789012345678901234567890">
+                    </div>
+                    <div class="form-group">
+                        <label>Blockchain:</label>
+                        <select id="token-chain">
+                            <option value="eth">Ethereum</option>
+                            <option value="bsc">Binance Smart Chain</option>
+                            <option value="polygon">Polygon</option>
+                            <option value="arbitrum">Arbitrum</option>
+                            <option value="avalanche">Avalanche</option>
+                        </select>
+                    </div>
+                    <button class="btn" onclick="checkToken()">🔍 CHECK TOKEN SAFETY</button>
+                    <div id="token-check-result" class="result-box">
+                        <p>Enter a token address and click "CHECK TOKEN SAFETY" to analyze...</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>💱 MANUAL PRICE CHECKER</h2>
+                    <p>Check the current price of any cryptocurrency pair.</p>
+                    <div class="form-group">
+                        <label>Trading Pair (e.g., SOL/USDT, BTC/USDT):</label>
+                        <input type="text" id="price-symbol" placeholder="SOL/USDT">
+                    </div>
+                    <div class="form-group">
+                        <label>Exchange:</label>
+                        <select id="price-exchange">
+                            <option value="binance">Binance</option>
+                            <option value="coinbase">Coinbase</option>
+                        </select>
+                    </div>
+                    <button class="btn" onclick="checkPrice()">💱 CHECK PRICE</button>
+                    <div id="price-check-result" class="result-box">
+                        <p>Enter a trading pair and click "CHECK PRICE" to fetch current data...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API TAB -->
+            <div id="api-tab" class="tab-content">
+                <div class="section">
+                    <h2>🔗 API ENDPOINTS</h2>
+                    <h3>Monitoring APIs:</h3>
+                    <ul>
+                        <li><a href="/api/status">/api/status</a> - Bot status JSON</li>
+                        <li><a href="/api/prices">/api/prices</a> - Current prices JSON</li>
+                        <li><a href="/api/jobs">/api/jobs</a> - Scheduler jobs JSON</li>
+                        <li><a href="/api/activities">/api/activities</a> - Recent activities JSON</li>
+                    </ul>
+                    
+                    <h3>Wallet APIs:</h3>
+                    <ul>
+                        <li><a href="/api/wallet/status">/api/wallet/status</a> - Wallet balances (GET)</li>
+                        <li>POST /api/wallet/check-token - Token safety analysis</li>
+                        <li>POST /api/price/check - Manual price check</li>
+                    </ul>
+                    
+                    <h3>Webhooks:</h3>
+                    <ul>
+                        <li>POST /overseer-event - Webhook for game events</li>
+                        <li>POST /token-scalper-alert - Webhook for Token-scalper alerts</li>
+                    </ul>
+                    
+                    <h3>Authentication:</h3>
+                    <p>All API endpoints require HTTP Basic Authentication with your admin credentials.</p>
+                    <pre style="background: #0f0f0f; padding: 10px; border-radius: 3px;">
+curl -u {{ admin_user }}:PASSWORD https://your-domain.com/api/status
+                    </pre>
+                </div>
             </div>
         </div>
     </body>
     </html>
     '''
+    
     
     with RECENT_ACTIVITIES_LOCK:
         activities_copy = list(reversed(RECENT_ACTIVITIES))
@@ -703,7 +1052,9 @@ def monitoring_dashboard():
         safety_cache_count=len(TOKEN_SAFETY_CACHE),
         price_data=price_cache,
         jobs=jobs_info,
-        activities=activities_copy
+        activities=activities_copy,
+        wallet_enabled=WALLET_ENABLED and ENABLE_WALLET_UI,
+        admin_user=ADMIN_USERNAME
     )
 
 @app.route("/api/status")
@@ -752,6 +1103,115 @@ def api_activities():
     with RECENT_ACTIVITIES_LOCK:
         activities_copy = list(reversed(RECENT_ACTIVITIES))
     return {"activities": activities_copy}
+
+# ------------------------------------------------------------
+# WALLET API ROUTES (Optional - requires wallet configuration)
+# ------------------------------------------------------------
+@app.route("/api/wallet/status")
+@auth.login_required
+def api_wallet_status():
+    """Get wallet connection status and balances"""
+    if not WALLET_ENABLED or not ENABLE_WALLET_UI:
+        return {"enabled": False, "error": "Wallet features not enabled"}, 400
+    
+    status = {
+        "enabled": True,
+        "wallets": {}
+    }
+    
+    try:
+        if solana_client and wallet_address:
+            # Get Solana balance
+            balance_response = solana_client.get_balance(solana_keypair.pubkey())
+            balance_lamports = balance_response.value if hasattr(balance_response, 'value') else 0
+            balance_sol = balance_lamports / 1e9  # Convert lamports to SOL
+            
+            status["wallets"]["solana"] = {
+                "address": wallet_address,
+                "balance": balance_sol,
+                "currency": "SOL",
+                "connected": True
+            }
+        
+        if eth_w3 and eth_wallet_address:
+            # Get ETH balance
+            balance_wei = eth_w3.eth.get_balance(eth_wallet_address)
+            balance_eth = eth_w3.from_wei(balance_wei, 'ether')
+            
+            status["wallets"]["ethereum"] = {
+                "address": eth_wallet_address,
+                "balance": float(balance_eth),
+                "currency": "ETH",
+                "connected": eth_w3.is_connected()
+            }
+        
+        if bsc_w3 and eth_wallet_address:
+            # Get BNB balance
+            balance_wei = bsc_w3.eth.get_balance(eth_wallet_address)
+            balance_bnb = bsc_w3.from_wei(balance_wei, 'ether')
+            
+            status["wallets"]["bsc"] = {
+                "address": eth_wallet_address,
+                "balance": float(balance_bnb),
+                "currency": "BNB",
+                "connected": bsc_w3.is_connected()
+            }
+    except Exception as e:
+        logging.error(f"Error fetching wallet status: {e}")
+        return {"enabled": True, "error": str(e)}, 500
+    
+    return status
+
+@app.route("/api/wallet/check-token", methods=['POST'])
+@auth.login_required
+def api_check_token():
+    """Manual token safety check endpoint"""
+    data = request.json
+    token_address = data.get('token_address')
+    chain = data.get('chain', 'eth')
+    
+    if not token_address:
+        return {"error": "token_address required"}, 400
+    
+    try:
+        result = check_token_safety(token_address, chain)
+        add_activity('Token Check', f'Checked {token_address[:8]}... on {chain}')
+        return result
+    except Exception as e:
+        logging.error(f"Token check failed: {e}")
+        return {"error": str(e)}, 500
+
+@app.route("/api/price/check", methods=['POST'])
+@auth.login_required
+def api_manual_price_check():
+    """Manual price check for any token pair"""
+    data = request.json
+    symbol = data.get('symbol')  # e.g., "SOL/USDT"
+    exchange_name = data.get('exchange', 'binance')
+    
+    if not symbol:
+        return {"error": "symbol required (e.g., 'SOL/USDT')"}, 400
+    
+    try:
+        exchange = ccxt.binance() if exchange_name == 'binance' else ccxt.coinbase()
+        ticker = exchange.fetch_ticker(symbol)
+        
+        result = {
+            "symbol": symbol,
+            "exchange": exchange_name,
+            "price": ticker.get('last'),
+            "change_24h": ticker.get('percentage'),
+            "high_24h": ticker.get('high'),
+            "low_24h": ticker.get('low'),
+            "volume_24h": ticker.get('baseVolume'),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        add_activity('Price Check', f'Manual check: {symbol} = ${result["price"]}')
+        return result
+    except Exception as e:
+        logging.error(f"Manual price check failed for {symbol}: {e}")
+        return {"error": str(e)}, 500
 
 # ------------------------------------------------------------
 # TOKEN SAFETY & ANALYSIS MODULE

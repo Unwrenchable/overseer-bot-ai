@@ -46,7 +46,9 @@
 - 🗺️ Location claim announcements
 
 ### Monitoring Dashboard
-- 🖥️ Beautiful Vault-Tec themed web UI
+- 🖥️ Beautiful Vault-Tec themed web UI with **tabbed interface**
+- 💰 **Wallet integration** (Solana, Ethereum, BSC) - NEW!
+- 🔧 **Manual control tools** (token checker, price checker) - NEW!
 - 📊 Real-time status, uptime, and scheduler jobs
 - 💹 Live token prices with 24h changes
 - 📝 Activity log (last 50 events)
@@ -117,11 +119,31 @@ Login with credentials from your `.env` file:
 - **Username:** Value of `ADMIN_USERNAME` (default: `admin`)
 - **Password:** Value of `ADMIN_PASSWORD` (**⚠️ CHANGE THIS!**)
 
+**New UI Features:**
+- 📊 **Monitoring Tab** - Real-time bot status and automated tasks
+- 💰 **Wallet Tab** - View wallet balances (Solana, ETH, BSC)
+- 🔧 **Tools Tab** - Manual token safety checker & price checker
+- 🔗 **API Tab** - Complete API documentation
+
+📖 **See [WALLET_UI_GUIDE.md](./WALLET_UI_GUIDE.md) for complete wallet setup and usage**
+
 ## ⚙️ Configuration
 
-### Required Environment Variables
+### ⚠️ About .env Files
 
-Create a `.env` file with these required variables:
+**Important Security Note:**
+- The repository includes `.env.example` as a **TEMPLATE** (committed to Git)
+- `.env.example` contains NO actual secrets, only placeholders
+- You must create your own `.env` file for actual secrets (NOT committed to Git)
+
+### Setup Environment Variables
+
+**Step 1:** Copy the template:
+```bash
+cp .env.example .env
+```
+
+**Step 2:** Edit YOUR `.env` file (not .env.example!) with actual values:
 
 ```env
 # Twitter API Credentials (Required)
@@ -135,11 +157,21 @@ BEARER_TOKEN=your_twitter_bearer_token
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_password_here
 
-# Optional
+# Optional - Wallet Features (NEW!)
+ENABLE_WALLET_UI=true
+SOLANA_PRIVATE_KEY=your_solana_private_key        # Optional
+ETH_PRIVATE_KEY=your_eth_private_key              # Optional
+
+# Optional - Other
 HUGGING_FACE_TOKEN=your_hugging_face_token  # For AI responses
 WEBHOOK_API_KEY=your_webhook_api_key        # For external webhooks
 PORT=5000                                    # Web server port
 ```
+
+**⚠️ CRITICAL:**
+- NEVER commit your `.env` file (it's in `.gitignore`)
+- NEVER put actual secrets in `.env.example`
+- For cloud deployments, use platform environment variables instead
 
 ### Generate Secure Credentials
 
@@ -215,6 +247,13 @@ Comprehensive documentation available:
   - Webhook integration between bots
   - RPC endpoint configuration
   - Alert types and monitoring
+
+- 💰 **[WALLET_UI_GUIDE.md](./WALLET_UI_GUIDE.md)** - NEW! Wallet & Manual Control Guide
+  - Complete wallet setup (Solana, ETH, BSC)
+  - Using the enhanced tabbed UI
+  - Manual token safety checking
+  - Manual price checking
+  - API usage examples
 
 ### Quick Reference
 

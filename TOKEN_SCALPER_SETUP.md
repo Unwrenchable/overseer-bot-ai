@@ -275,9 +275,11 @@ RPC endpoints allow Token-scalper to read blockchain data.
    - Heroku: `https://your-app-name.herokuapp.com/token-scalper-alert`
 
 2. **Overseer API Key:**
-   - From your Overseer Bot `.env` file
+   - ⚠️ **CRITICAL:** This key must match EXACTLY with Overseer Bot's `WEBHOOK_API_KEY`
+   - From your Overseer Bot `.env` file (NOT from .env.example!)
    - Variable name: `WEBHOOK_API_KEY`
    - Generate one if empty: `openssl rand -hex 32`
+   - Use the SAME key in both places for webhooks to work
 
 **Example:**
 
@@ -301,6 +303,11 @@ RPC endpoints allow Token-scalper to read blockchain data.
    echo "wallets.json" >> .gitignore
    echo ".env" >> .gitignore
    ```
+   
+   ⚠️ **IMPORTANT:** 
+   - The `.env.example` in Overseer Bot is a TEMPLATE file
+   - NEVER put actual secrets in .env.example (it's committed to Git)
+   - ONLY put actual secrets in your `.env` file (which is gitignored)
 
 2. **Use environment variables for secrets**
    ```bash
@@ -308,6 +315,11 @@ RPC endpoints allow Token-scalper to read blockchain data.
    export ALCHEMY_API_KEY="your_key_here"
    export OVERSEER_WEBHOOK_KEY="your_webhook_key"
    ```
+   
+   **Best practice for Token-scalper config.json:**
+   - If possible, use environment variables instead of config.json for secrets
+   - Never commit config.json with actual API keys to Git
+   - Keep a config.example.json as a template with placeholder values
 
 3. **Restrict file permissions**
    ```bash
