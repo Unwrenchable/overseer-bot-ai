@@ -506,6 +506,14 @@ def verify_webhook_auth():
     
     return provided_key == WEBHOOK_API_KEY
 
+# ------------------------------------------------------------
+# HEALTH CHECK ENDPOINT (No authentication required for monitoring)
+# ------------------------------------------------------------
+@app.route("/health")
+def health_check():
+    """Health check endpoint for monitoring services (no auth required)"""
+    return {"status": "ok", "service": "overseer-bot", "timestamp": datetime.now().isoformat()}
+
 @app.post("/overseer-event")
 def overseer_event():
     """Webhook endpoint for overseer events"""
@@ -1142,6 +1150,14 @@ def api_activities():
     with RECENT_ACTIVITIES_LOCK:
         activities_copy = list(reversed(RECENT_ACTIVITIES))
     return {"activities": activities_copy}
+
+@app.route("/api/alerts")
+@auth.login_required
+def api_alerts():
+    """JSON endpoint for recent alerts (alias for activities)"""
+    with RECENT_ACTIVITIES_LOCK:
+        activities_copy = list(reversed(RECENT_ACTIVITIES))
+    return {"alerts": activities_copy}
 
 # ------------------------------------------------------------
 # WALLET API ROUTES (Optional - requires wallet configuration)
@@ -2284,21 +2300,24 @@ def post_activation_tweet():
     if not TWITTER_ENABLED or not client:
         logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥 (Monitoring mode - Twitter disabled)")
         return
-    
+
     logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
     try:
+        # Add timestamp to make each activation tweet unique
+        boot_time = datetime.now().strftime("%H:%M UTC")
+
         activation_messages = [
             (
                 f"☢️ {BOT_NAME} ACTIVATED ☢️\n\n"
                 f"Vault {VAULT_NUMBER} uplink established.\n"
                 f"Cross-timeline synchronization complete.\n"
-                f"The Mojave remembers. The wasteland awaits.\n\n"
+                f"Boot time: {boot_time}\n\n"
                 f"{random.choice(LORES)}\n\n"
                 f"🎮 {GAME_LINK}"
             ),
             (
                 f"🔌 SYSTEM BOOT COMPLETE 🔌\n\n"
-                f"{BOT_NAME} online.\n"
+                f"{BOT_NAME} online at {boot_time}.\n"
                 f"Neural echo stable. Memory fragments intact.\n"
                 f"Scanning wasteland frequencies...\n\n"
                 f"{get_personality_line()}\n\n"
@@ -2308,7 +2327,8 @@ def post_activation_tweet():
                 f"📡 SIGNAL RESTORED 📡\n\n"
                 f"Vault {VAULT_NUMBER} Overseer Terminal active.\n"
                 f"Atomic Fizz Caps economy: operational.\n"
-                f"Scavenger protocols: engaged.\n\n"
+                f"Scavenger protocols: engaged.\n"
+                f"Time: {boot_time}\n\n"
                 f"{random.choice(LORES)}\n\n"
                 f"🎮 {GAME_LINK}"
             )
@@ -2319,6 +2339,7 @@ def post_activation_tweet():
             activation_msg = (
                 f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
                 f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
+                f"Time: {boot_time}\n"
                 f"{random.choice(LORES)}\n\n"
                 f"🎮 {GAME_LINK}"
             )[:TWITTER_CHAR_LIMIT]
