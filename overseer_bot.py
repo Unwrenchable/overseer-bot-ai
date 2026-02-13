@@ -2249,9 +2249,15 @@ def post_activation_tweet():
         logging.warning(f"Activation tweet failed (may be duplicate): {e}")
         add_activity("ERROR", f"Activation tweet failed: {str(e)}")
 
-# Schedule activation tweet to be posted once after startup (delayed by 5 seconds)
-# This ensures the scheduler is fully initialized before posting
-scheduler.add_job(post_activation_tweet, 'date', run_date=datetime.now() + timedelta(seconds=5))
+# Post activation tweet after a short delay to ensure scheduler is ready
+# Using a thread to avoid blocking the import process
+def delayed_activation():
+    """Post activation tweet after a 5 second delay"""
+    time.sleep(5)
+    post_activation_tweet()
+
+activation_thread = threading.Thread(target=delayed_activation, daemon=True)
+activation_thread.start()
 
 # Log monitoring UI info - Gunicorn will serve the Flask app
 logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
