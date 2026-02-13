@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -2198,51 +2198,60 @@ scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0)
 scheduler.start()
 
 # ------------------------------------------------------------
-# ACTIVATION - ENHANCED STARTUP MESSAGE
+# ACTIVATION FUNCTION - POST STARTUP MESSAGE
 # ------------------------------------------------------------
-logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
-try:
-    activation_messages = [
-        (
-            f"☢️ {BOT_NAME} ACTIVATED ☢️\n\n"
-            f"Vault {VAULT_NUMBER} uplink established.\n"
-            f"Cross-timeline synchronization complete.\n"
-            f"The Mojave remembers. The wasteland awaits.\n\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        ),
-        (
-            f"🔌 SYSTEM BOOT COMPLETE 🔌\n\n"
-            f"{BOT_NAME} online.\n"
-            f"Neural echo stable. Memory fragments intact.\n"
-            f"Scanning wasteland frequencies...\n\n"
-            f"{get_personality_line()}\n\n"
-            f"🎮 {GAME_LINK}"
-        ),
-        (
-            f"📡 SIGNAL RESTORED 📡\n\n"
-            f"Vault {VAULT_NUMBER} Overseer Terminal active.\n"
-            f"Atomic Fizz Caps economy: operational.\n"
-            f"Scavenger protocols: engaged.\n\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        )
-    ]
-    activation_msg = random.choice(activation_messages)
-    # Ensure fits in tweet
-    if len(activation_msg) > TWITTER_CHAR_LIMIT:
-        activation_msg = (
-            f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
-            f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        )[:TWITTER_CHAR_LIMIT]
-    client.create_tweet(text=activation_msg)
-    logging.info("Activation message posted")
-    add_activity("STARTUP", f"Bot activated - {BOT_NAME}")
-except tweepy.TweepyException as e:
-    logging.warning(f"Activation tweet failed (may be duplicate): {e}")
-    add_activity("ERROR", f"Activation tweet failed: {str(e)}")
+def post_activation_tweet():
+    """
+    Post activation tweet to announce bot is online.
+    This should be called once on startup, not during module import.
+    """
+    logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
+    try:
+        activation_messages = [
+            (
+                f"☢️ {BOT_NAME} ACTIVATED ☢️\n\n"
+                f"Vault {VAULT_NUMBER} uplink established.\n"
+                f"Cross-timeline synchronization complete.\n"
+                f"The Mojave remembers. The wasteland awaits.\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"🔌 SYSTEM BOOT COMPLETE 🔌\n\n"
+                f"{BOT_NAME} online.\n"
+                f"Neural echo stable. Memory fragments intact.\n"
+                f"Scanning wasteland frequencies...\n\n"
+                f"{get_personality_line()}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"📡 SIGNAL RESTORED 📡\n\n"
+                f"Vault {VAULT_NUMBER} Overseer Terminal active.\n"
+                f"Atomic Fizz Caps economy: operational.\n"
+                f"Scavenger protocols: engaged.\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )
+        ]
+        activation_msg = random.choice(activation_messages)
+        # Ensure fits in tweet
+        if len(activation_msg) > TWITTER_CHAR_LIMIT:
+            activation_msg = (
+                f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
+                f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        client.create_tweet(text=activation_msg)
+        logging.info("Activation message posted")
+        add_activity("STARTUP", f"Bot activated - {BOT_NAME}")
+    except tweepy.TweepyException as e:
+        logging.warning(f"Activation tweet failed (may be duplicate): {e}")
+        add_activity("ERROR", f"Activation tweet failed: {str(e)}")
+
+# Schedule activation tweet to be posted once after startup (delayed by 5 seconds)
+# This ensures the scheduler is fully initialized before posting
+scheduler.add_job(post_activation_tweet, 'date', run_date=datetime.now() + timedelta(seconds=5))
 
 # Log monitoring UI info - Gunicorn will serve the Flask app
 logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
