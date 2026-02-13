@@ -59,6 +59,21 @@ ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
 
+# Check if Twitter credentials are configured
+TWITTER_ENABLED = all([CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET, BEARER_TOKEN])
+
+if not TWITTER_ENABLED:
+    logging.warning("="*60)
+    logging.warning("⚠️  Twitter credentials not fully configured!")
+    logging.warning("⚠️  Bot will run in monitoring-only mode.")
+    logging.warning("⚠️  Set the following environment variables to enable Twitter features:")
+    logging.warning("⚠️  - CONSUMER_KEY")
+    logging.warning("⚠️  - CONSUMER_SECRET")
+    logging.warning("⚠️  - ACCESS_TOKEN")
+    logging.warning("⚠️  - ACCESS_SECRET")
+    logging.warning("⚠️  - BEARER_TOKEN")
+    logging.warning("="*60)
+
 # Admin authentication credentials
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'vault77secure')
@@ -116,19 +131,35 @@ if WALLET_ENABLED and ENABLE_WALLET_UI:
         logging.error(f"Failed to initialize wallet: {e}")
         WALLET_ENABLED = False
 
-client = tweepy.Client(
-    consumer_key=CONSUMER_KEY,
-    consumer_secret=CONSUMER_SECRET,
-    access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_SECRET,
-    bearer_token=BEARER_TOKEN,
-    wait_on_rate_limit=True
-)
+# Initialize Twitter clients (only if credentials are available)
+# NOTE: We check both TWITTER_ENABLED and client/api_v1 in functions for defense in depth.
+# This ensures safety even if initialization partially fails (e.g., TWITTER_ENABLED=True but client=None).
+client = None
+api_v1 = None
 
-auth_v1 = tweepy.OAuth1UserHandler(
-    CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET
-)
-api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
+if TWITTER_ENABLED:
+    try:
+        client = tweepy.Client(
+            consumer_key=CONSUMER_KEY,
+            consumer_secret=CONSUMER_SECRET,
+            access_token=ACCESS_TOKEN,
+            access_token_secret=ACCESS_SECRET,
+            bearer_token=BEARER_TOKEN,
+            wait_on_rate_limit=True
+        )
+        
+        auth_v1 = tweepy.OAuth1UserHandler(
+            CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET
+        )
+        api_v1 = tweepy.API(auth_v1, wait_on_rate_limit=True)
+        
+        logging.info("✅ Twitter clients initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Twitter clients: {e}")
+        logging.error("Bot will run in monitoring-only mode")
+        TWITTER_ENABLED = False
+        client = None
+        api_v1 = None
 
 # ------------------------------------------------------------
 # TOKEN SCALPER MODULE - PRICE MONITORING
@@ -328,6 +359,10 @@ def create_fallback_alert_message(token_name, price_change, price):
 
 def post_price_alert(symbol, price_data, price_change):
     """Post a price alert to Twitter with Overseer personality."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug(f"Skipping price alert for {symbol} - Twitter not enabled")
+        return
+    
     try:
         token_name = symbol.split('/')[0]
         direction = "SURGE" if price_change > 0 else "DIP"
@@ -378,6 +413,10 @@ def post_price_alert(symbol, price_data, price_change):
 
 def post_market_summary():
     """Post a market summary with multiple token prices."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping market summary - Twitter not enabled")
+        return
+    
     try:
         summary_lines = ["📊 WASTELAND MARKET REPORT 📊\n"]
         
@@ -1304,6 +1343,10 @@ def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
 
 def handle_rug_pull_alert(alert_data: dict):
     """Handle rug pull alert from Token-scalper"""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping rug pull alert - Twitter not enabled")
+        return
+    
     token_name = alert_data.get('token_name', 'Unknown Token')
     token_address = alert_data.get('token_address', 'N/A')
     severity = alert_data.get('severity', 'medium')
@@ -1355,6 +1398,10 @@ def handle_rug_pull_alert(alert_data: dict):
 
 def handle_high_potential_alert(alert_data: dict):
     """Handle high potential token alert from Token-scalper"""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping high potential alert - Twitter not enabled")
+        return
+    
     token_name = alert_data.get('token_name', 'Unknown Token')
     score = alert_data.get('opportunity_score', 0)
     reasons = alert_data.get('reasons', [])
@@ -1395,6 +1442,10 @@ def handle_high_potential_alert(alert_data: dict):
 
 def handle_airdrop_alert(alert_data: dict):
     """Handle airdrop opportunity alert"""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping airdrop alert - Twitter not enabled")
+        return
+    
     airdrop_name = alert_data.get('name', 'Unknown Airdrop')
     website = alert_data.get('website', '')
     value_estimate = alert_data.get('value_estimate', 'TBD')
@@ -1449,12 +1500,21 @@ def save_json_set(data, filename):
         json.dump(list(data), f)
 
 def get_random_media_id():
+    # Check both TWITTER_ENABLED and client/api_v1 for defense in depth
+    # If Twitter fails to initialize, client/api_v1 may be None even if TWITTER_ENABLED was True
+    if not TWITTER_ENABLED or not api_v1:
+        return None
+    
+    if not os.path.exists(MEDIA_FOLDER):
+        return None
+    
     media_files = [
         f for f in os.listdir(MEDIA_FOLDER)
         if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4'))
     ]
     if not media_files:
         return None
+    
     media_path = os.path.join(MEDIA_FOLDER, random.choice(media_files))
     try:
         media = api_v1.media_upload(media_path)
@@ -1834,6 +1894,10 @@ def get_lore_drop():
 
 def overseer_broadcast():
     """Main broadcast function with varied message types."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping broadcast - Twitter not enabled")
+        return
+    
     broadcast_type = random.choice([
         'status_report', 'event_alert', 'lore_drop', 'threat_scan',
         'faction_news', 'fizzco_ad', 'vault_log', 'philosophical'
@@ -1949,6 +2013,10 @@ def overseer_broadcast():
 
 def overseer_respond():
     """Respond to mentions with personality-driven responses."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping mention check - Twitter not enabled")
+        return
+    
     processed = load_json_set(PROCESSED_MENTIONS_FILE)
     try:
         me = client.get_me()
@@ -2143,6 +2211,10 @@ def generate_contextual_response(username, message):
 
 def overseer_retweet_hunt():
     """Search and retweet relevant content."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping retweet hunt - Twitter not enabled")
+        return
+    
     query = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"Atomic Fizz\" OR \"bottle caps\" OR gaming) filter:media min_faves:5 -is:retweet"
     try:
         tweets = client.search_recent_tweets(query=query, max_results=20)
@@ -2161,6 +2233,10 @@ def overseer_retweet_hunt():
 
 def overseer_diagnostic():
     """Post daily diagnostic/status message."""
+    if not TWITTER_ENABLED or not client:
+        logging.debug("Skipping diagnostic - Twitter not enabled")
+        return
+    
     threat = get_threat_level()
     diag = (
         f"☢️ OVERSEER DIAGNOSTIC ☢️\n\n"
@@ -2205,6 +2281,10 @@ def post_activation_tweet():
     Post activation tweet to announce bot is online.
     This should be called once on startup, not during module import.
     """
+    if not TWITTER_ENABLED or not client:
+        logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥 (Monitoring mode - Twitter disabled)")
+        return
+    
     logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
     try:
         activation_messages = [
