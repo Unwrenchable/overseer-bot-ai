@@ -22,7 +22,11 @@ Use this checklist to ensure secure deployment of the Overseer Bot AI with authe
 - [ ] Verify `.env` is in `.gitignore` (it is!)
 - [ ] Test locally:
   ```bash
+  # Development mode (Flask dev server)
   python overseer_bot.py
+  
+  # OR Production mode locally (Gunicorn)
+  gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 overseer_bot:app
   # Should see security warning if using default password
   ```
 - [ ] Test dashboard access (should require login)

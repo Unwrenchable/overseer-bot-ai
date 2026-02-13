@@ -50,7 +50,11 @@ ENABLE_WALLET_UI=false
 ### Step 3: Run
 
 ```bash
+# Development mode (quick start)
 python overseer_bot.py
+
+# OR Production mode (recommended for production)
+# gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 overseer_bot:app
 ```
 
 ### Step 4: Access Dashboard
@@ -179,7 +183,11 @@ git status  # Should not show .env
 ### Step 5: Run the Bot
 
 ```bash
+# Development mode
 python overseer_bot.py
+
+# OR Production mode with Gunicorn (recommended for production)
+# gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 overseer_bot:app
 ```
 
 Expected output:
@@ -378,6 +386,9 @@ docker run -p 5000:5000 --env-file .env overseer-bot
    ```bash
    export PORT=8080
    python overseer_bot.py
+   
+   # OR with Gunicorn
+   # gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 2 overseer_bot:app
    ```
 
 3. Check firewall:

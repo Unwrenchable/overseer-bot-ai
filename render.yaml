@@ -21,7 +21,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: pip install -r requirements.txt
-    startCommand: python overseer_bot.py
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 overseer_bot:app
     envVars:
       # Twitter API Credentials - MUST be set in Render dashboard
       - key: CONSUMER_KEY
