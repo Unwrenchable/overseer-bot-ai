@@ -20,7 +20,7 @@ services:
     env: python
     plan: starter
     region: oregon
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 overseer_bot:app
     envVars:
       # Twitter API Credentials - MUST be set in Render dashboard
