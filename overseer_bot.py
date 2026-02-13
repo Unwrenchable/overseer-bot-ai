@@ -2244,40 +2244,40 @@ except tweepy.TweepyException as e:
     logging.warning(f"Activation tweet failed (may be duplicate): {e}")
     add_activity("ERROR", f"Activation tweet failed: {str(e)}")
 
-# ------------------------------------------------------------
-# FLASK APP THREAD
-# ------------------------------------------------------------
-def run_flask_app():
-    """
-    Run Flask app in a separate thread.
-    
-    SECURITY WARNING: This uses Flask's development server which is NOT suitable
-    for production deployments. For production, use a production WSGI server like
-    Gunicorn or uWSGI.
-    
-    The server is bound to 0.0.0.0 making it accessible from any network interface.
-    For production deployments, consider:
-    1. Using HTTPS (not HTTP)
-    2. Adding authentication middleware
-    3. Binding to 127.0.0.1 for local-only access
-    4. Using a production WSGI server (Gunicorn, uWSGI)
-    5. Placing behind a reverse proxy (nginx, Apache)
-    """
-    port = int(os.getenv('PORT', 5000))
-    # WARNING: debug=False and use_reloader=False are set but this is still
-    # the development server. Use Gunicorn or uWSGI for production.
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-# Start Flask in a separate thread
-flask_thread = threading.Thread(target=run_flask_app, daemon=True)
-flask_thread.start()
-logging.info(f"Flask monitoring UI started on port {os.getenv('PORT', 5000)}")
-add_activity("STARTUP", f"Monitoring UI available at http://0.0.0.0:{os.getenv('PORT', 5000)}")
+# Log monitoring UI info - Gunicorn will serve the Flask app
+logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
+add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
 
 # ------------------------------------------------------------
-# MAIN LOOP
+# MAIN LOOP (for direct execution only)
 # ------------------------------------------------------------
 if __name__ == "__main__":
+    """
+    This main loop is only used when running the script directly with 
+    'python overseer_bot.py' for development/testing purposes.
+    
+    In production with Gunicorn, this block is NOT executed.
+    Gunicorn will:
+    1. Import the module
+    2. Initialize the scheduler and background tasks (above)
+    3. Serve the Flask app using its production WSGI server
+    """
+    def run_flask_app():
+        """
+        Run Flask app in a separate thread for development mode.
+        
+        SECURITY WARNING: This uses Flask's development server which is NOT suitable
+        for production deployments. For production, use a production WSGI server like
+        Gunicorn or uWSGI.
+        """
+        port = int(os.getenv('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    
+    # Start Flask in a separate thread (development mode only)
+    flask_thread = threading.Thread(target=run_flask_app, daemon=True)
+    flask_thread.start()
+    logging.info(f"[DEV MODE] Flask development server started on port {os.getenv('PORT', 5000)}")
+    
     try:
         logging.info(f"{BOT_NAME} entering main loop. Monitoring wasteland frequencies...")
         while True:
