@@ -132,6 +132,8 @@ if WALLET_ENABLED and ENABLE_WALLET_UI:
         WALLET_ENABLED = False
 
 # Initialize Twitter clients (only if credentials are available)
+# NOTE: We check both TWITTER_ENABLED and client/api_v1 in functions for defense in depth.
+# This ensures safety even if initialization partially fails (e.g., TWITTER_ENABLED=True but client=None).
 client = None
 api_v1 = None
 
@@ -1498,6 +1500,8 @@ def save_json_set(data, filename):
         json.dump(list(data), f)
 
 def get_random_media_id():
+    # Check both TWITTER_ENABLED and client/api_v1 for defense in depth
+    # If Twitter fails to initialize, client/api_v1 may be None even if TWITTER_ENABLED was True
     if not TWITTER_ENABLED or not api_v1:
         return None
     
@@ -1510,6 +1514,7 @@ def get_random_media_id():
     ]
     if not media_files:
         return None
+    
     media_path = os.path.join(MEDIA_FOLDER, random.choice(media_files))
     try:
         media = api_v1.media_upload(media_path)
