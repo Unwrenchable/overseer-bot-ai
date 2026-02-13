@@ -104,8 +104,11 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your Twitter API keys
 
-# 4. Run the bot
+# 4. Run the bot (development mode)
 python overseer_bot.py
+
+# For production, use Gunicorn (recommended):
+# gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 overseer_bot:app
 ```
 
 ### Access the Dashboard
@@ -199,7 +202,7 @@ Configure in `overseer_bot.py` → `MONITORED_TOKENS`
 
 ### Render.com (Recommended)
 
-The repository includes `render.yaml` for one-click deployment:
+The repository includes `render.yaml` for one-click deployment using Gunicorn production server:
 
 1. Fork this repository
 2. Connect to [Render.com](https://render.com)
@@ -207,13 +210,17 @@ The repository includes `render.yaml` for one-click deployment:
 4. Set environment variables in Render dashboard
 5. Deploy!
 
+**Note:** Render automatically uses the Gunicorn WSGI server for production deployment (configured in `render.yaml`).
+
 ### Other Platforms
 
 Compatible with:
-- **Heroku** - Use `Procfile`: `web: python overseer_bot.py`
-- **Railway** - Auto-detects Python
-- **AWS/GCP/Azure** - Use container or VM deployment
-- **Docker** - Create `Dockerfile` with Python 3.9+ base
+- **Heroku** - Use `Procfile`: `web: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 overseer_bot:app`
+- **Railway** - Auto-detects Python, add gunicorn to start command
+- **AWS/GCP/Azure** - Use container or VM deployment with Gunicorn
+- **Docker** - Create `Dockerfile` with Python 3.9+ base and Gunicorn
+
+**For local development only:** You can run `python overseer_bot.py` which uses Flask's development server.
 
 ## 📚 Documentation
 

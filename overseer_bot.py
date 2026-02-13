@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -2198,86 +2198,101 @@ scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0)
 scheduler.start()
 
 # ------------------------------------------------------------
-# ACTIVATION - ENHANCED STARTUP MESSAGE
+# ACTIVATION FUNCTION - POST STARTUP MESSAGE
 # ------------------------------------------------------------
-logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
-try:
-    activation_messages = [
-        (
-            f"☢️ {BOT_NAME} ACTIVATED ☢️\n\n"
-            f"Vault {VAULT_NUMBER} uplink established.\n"
-            f"Cross-timeline synchronization complete.\n"
-            f"The Mojave remembers. The wasteland awaits.\n\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        ),
-        (
-            f"🔌 SYSTEM BOOT COMPLETE 🔌\n\n"
-            f"{BOT_NAME} online.\n"
-            f"Neural echo stable. Memory fragments intact.\n"
-            f"Scanning wasteland frequencies...\n\n"
-            f"{get_personality_line()}\n\n"
-            f"🎮 {GAME_LINK}"
-        ),
-        (
-            f"📡 SIGNAL RESTORED 📡\n\n"
-            f"Vault {VAULT_NUMBER} Overseer Terminal active.\n"
-            f"Atomic Fizz Caps economy: operational.\n"
-            f"Scavenger protocols: engaged.\n\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        )
-    ]
-    activation_msg = random.choice(activation_messages)
-    # Ensure fits in tweet
-    if len(activation_msg) > TWITTER_CHAR_LIMIT:
-        activation_msg = (
-            f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
-            f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        )[:TWITTER_CHAR_LIMIT]
-    client.create_tweet(text=activation_msg)
-    logging.info("Activation message posted")
-    add_activity("STARTUP", f"Bot activated - {BOT_NAME}")
-except tweepy.TweepyException as e:
-    logging.warning(f"Activation tweet failed (may be duplicate): {e}")
-    add_activity("ERROR", f"Activation tweet failed: {str(e)}")
-
-# ------------------------------------------------------------
-# FLASK APP THREAD
-# ------------------------------------------------------------
-def run_flask_app():
+def post_activation_tweet():
     """
-    Run Flask app in a separate thread.
-    
-    SECURITY WARNING: This uses Flask's development server which is NOT suitable
-    for production deployments. For production, use a production WSGI server like
-    Gunicorn or uWSGI.
-    
-    The server is bound to 0.0.0.0 making it accessible from any network interface.
-    For production deployments, consider:
-    1. Using HTTPS (not HTTP)
-    2. Adding authentication middleware
-    3. Binding to 127.0.0.1 for local-only access
-    4. Using a production WSGI server (Gunicorn, uWSGI)
-    5. Placing behind a reverse proxy (nginx, Apache)
+    Post activation tweet to announce bot is online.
+    This should be called once on startup, not during module import.
     """
-    port = int(os.getenv('PORT', 5000))
-    # WARNING: debug=False and use_reloader=False are set but this is still
-    # the development server. Use Gunicorn or uWSGI for production.
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    logging.info(f"VAULT-TEC {BOT_NAME} ONLINE ☢️🔥")
+    try:
+        activation_messages = [
+            (
+                f"☢️ {BOT_NAME} ACTIVATED ☢️\n\n"
+                f"Vault {VAULT_NUMBER} uplink established.\n"
+                f"Cross-timeline synchronization complete.\n"
+                f"The Mojave remembers. The wasteland awaits.\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"🔌 SYSTEM BOOT COMPLETE 🔌\n\n"
+                f"{BOT_NAME} online.\n"
+                f"Neural echo stable. Memory fragments intact.\n"
+                f"Scanning wasteland frequencies...\n\n"
+                f"{get_personality_line()}\n\n"
+                f"🎮 {GAME_LINK}"
+            ),
+            (
+                f"📡 SIGNAL RESTORED 📡\n\n"
+                f"Vault {VAULT_NUMBER} Overseer Terminal active.\n"
+                f"Atomic Fizz Caps economy: operational.\n"
+                f"Scavenger protocols: engaged.\n\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )
+        ]
+        activation_msg = random.choice(activation_messages)
+        # Ensure fits in tweet
+        if len(activation_msg) > TWITTER_CHAR_LIMIT:
+            activation_msg = (
+                f"☢️ {BOT_NAME} ONLINE ☢️\n\n"
+                f"Vault {VAULT_NUMBER} uplink: ACTIVE\n"
+                f"{random.choice(LORES)}\n\n"
+                f"🎮 {GAME_LINK}"
+            )[:TWITTER_CHAR_LIMIT]
+        client.create_tweet(text=activation_msg)
+        logging.info("Activation message posted")
+        add_activity("STARTUP", f"Bot activated - {BOT_NAME}")
+    except tweepy.TweepyException as e:
+        logging.warning(f"Activation tweet failed (may be duplicate): {e}")
+        add_activity("ERROR", f"Activation tweet failed: {str(e)}")
 
-# Start Flask in a separate thread
-flask_thread = threading.Thread(target=run_flask_app, daemon=True)
-flask_thread.start()
-logging.info(f"Flask monitoring UI started on port {os.getenv('PORT', 5000)}")
-add_activity("STARTUP", f"Monitoring UI available at http://0.0.0.0:{os.getenv('PORT', 5000)}")
+# Post activation tweet after a short delay to ensure scheduler is ready
+# Using a thread to avoid blocking the import process
+def delayed_activation():
+    """Post activation tweet after a 5 second delay"""
+    time.sleep(5)
+    post_activation_tweet()
+
+activation_thread = threading.Thread(target=delayed_activation, daemon=True)
+activation_thread.start()
+
+# Log monitoring UI info - Gunicorn will serve the Flask app
+logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
+add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
 
 # ------------------------------------------------------------
-# MAIN LOOP
+# MAIN LOOP (for direct execution only)
 # ------------------------------------------------------------
 if __name__ == "__main__":
+    """
+    This main loop is only used when running the script directly with 
+    'python overseer_bot.py' for development/testing purposes.
+    
+    In production with Gunicorn, this block is NOT executed.
+    Gunicorn will:
+    1. Import the module
+    2. Initialize the scheduler and background tasks (above)
+    3. Serve the Flask app using its production WSGI server
+    """
+    def run_flask_app():
+        """
+        Run Flask app in a separate thread for development mode.
+        
+        SECURITY WARNING: This uses Flask's development server which is NOT suitable
+        for production deployments. For production, use a production WSGI server like
+        Gunicorn or uWSGI.
+        """
+        port = int(os.getenv('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    
+    # Start Flask in a separate thread (development mode only)
+    flask_thread = threading.Thread(target=run_flask_app, daemon=True)
+    flask_thread.start()
+    logging.info(f"[DEV MODE] Flask development server started on port {os.getenv('PORT', 5000)}")
+    
     try:
         logging.info(f"{BOT_NAME} entering main loop. Monitoring wasteland frequencies...")
         while True:
