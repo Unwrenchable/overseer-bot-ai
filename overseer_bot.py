@@ -347,13 +347,13 @@ def check_price_alerts():
     save_price_cache(price_cache)
 
 def create_fallback_alert_message(token_name, price_change, price):
-    """Create a guaranteed short fallback alert message."""
+    """Create a guaranteed short fallback alert message with dynamic personality."""
     direction = "SURGE" if price_change > 0 else "DIP"
     emoji = "📈" if price_change > 0 else "📉"
     return (
         f"🔔 ${token_name} {direction}: {price_change:+.2f}% {emoji}\n"
         f"Price: ${price:.2f}\n\n"
-        f"The wasteland economy shifts.\n\n"
+        f"{get_personality_line()}\n\n"
         f"{GAME_LINK}"
     )
 
@@ -514,26 +514,26 @@ def health_check():
     """Health check endpoint for monitoring services (no auth required)"""
     return {"status": "ok", "service": "overseer-bot", "timestamp": datetime.now().isoformat()}
 
-@app.post("/overseer-event")
+@app.route("/overseer-event", methods=["POST"])
 def overseer_event():
     """Webhook endpoint for overseer events"""
     if not verify_webhook_auth():
         return {"ok": False, "error": "Unauthorized"}, 401
-    
+
     event = request.json
     overseer_event_bridge(event)
     return {"ok": True}
 
-@app.post("/token-scalper-alert")
+@app.route("/token-scalper-alert", methods=["POST"])
 def token_scalper_alert():
     """Webhook endpoint for Token-scalper bot alerts"""
     if not verify_webhook_auth():
         return {"ok": False, "error": "Unauthorized"}, 401
-    
+
     try:
         alert_data = request.json
         alert_type = alert_data.get('type', 'unknown')
-        
+
         if alert_type == 'rug_pull':
             handle_rug_pull_alert(alert_data)
         elif alert_type == 'high_potential':
@@ -542,7 +542,7 @@ def token_scalper_alert():
             handle_airdrop_alert(alert_data)
         else:
             logging.warning(f"Unknown alert type: {alert_type}")
-        
+
         return {"ok": True, "processed": True}
     except Exception as e:
         logging.error(f"Token scalper alert failed: {e}")
@@ -1607,7 +1607,9 @@ def pick_tone():
 def get_personality_line():
     """Get a random personality line based on tone selection."""
     tone = pick_tone()
-    return random.choice(PERSONALITY_TONES[tone])
+    line = random.choice(PERSONALITY_TONES[tone])
+    logging.debug(f"Personality: tone={tone}, line='{line[:50]}...'")
+    return line
 
 # ------------------------------------------------------------
 # LORE DATA - EXPANDED FROM ATOMIC FIZZ CAPS UNIVERSE
@@ -1911,14 +1913,16 @@ def get_lore_drop():
 def overseer_broadcast():
     """Main broadcast function with varied message types."""
     if not TWITTER_ENABLED or not client:
-        logging.debug("Skipping broadcast - Twitter not enabled")
+        logging.warning("⚠️ Broadcast skipped - Twitter not enabled or client not initialized")
         return
-    
+
     broadcast_type = random.choice([
         'status_report', 'event_alert', 'lore_drop', 'threat_scan',
         'faction_news', 'fizzco_ad', 'vault_log', 'philosophical'
     ])
-    
+
+    logging.info(f"🎙️ Broadcasting: type={broadcast_type}")
+
     try:
         if broadcast_type == 'status_report':
             # Classic status report with time, event, and call to action
@@ -2271,23 +2275,45 @@ def overseer_diagnostic():
 # ------------------------------------------------------------
 # SCHEDULER - ADJUSTED FOR BETTER ENGAGEMENT
 # ------------------------------------------------------------
-scheduler = BackgroundScheduler()
-# Broadcast every 2-4 hours
-scheduler.add_job(overseer_broadcast, 'interval', minutes=random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL))
-# Check mentions every 15-30 minutes
-scheduler.add_job(overseer_respond, 'interval', minutes=random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL))
-# Retweet hunt every hour
-scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1)
-# Daily diagnostic at 8 AM
-scheduler.add_job(overseer_diagnostic, 'cron', hour=8)
+try:
+    scheduler = BackgroundScheduler()
 
-# Token Scalper Features
-# Check prices and send alerts every 5 minutes
-scheduler.add_job(check_price_alerts, 'interval', minutes=5)
-# Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
-scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0)
+    # Broadcast every 2-4 hours with randomized intervals
+    broadcast_interval = random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL)
+    scheduler.add_job(overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast')
+    logging.info(f"Scheduler: overseer_broadcast job added (interval: {broadcast_interval} minutes)")
 
-scheduler.start()
+    # Check mentions every 15-30 minutes with randomized intervals
+    mention_interval = random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL)
+    scheduler.add_job(overseer_respond, 'interval', minutes=mention_interval, id='mentions')
+    logging.info(f"Scheduler: overseer_respond job added (interval: {mention_interval} minutes)")
+
+    # Retweet hunt every hour
+    scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1, id='retweet')
+    logging.info("Scheduler: overseer_retweet_hunt job added (interval: 1 hour)")
+
+    # Daily diagnostic at 8 AM
+    scheduler.add_job(overseer_diagnostic, 'cron', hour=8, id='diagnostic')
+    logging.info("Scheduler: overseer_diagnostic job added (cron: 8 AM daily)")
+
+    # Token Scalper Features
+    # Check prices and send alerts every 5 minutes
+    scheduler.add_job(check_price_alerts, 'interval', minutes=5, id='price_check')
+    logging.info("Scheduler: check_price_alerts job added (interval: 5 minutes)")
+
+    # Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
+    scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0, id='market_summary')
+    logging.info("Scheduler: post_market_summary job added (cron: 8 AM, 2 PM, 8 PM)")
+
+    scheduler.start()
+    logging.info("☢️ SCHEDULER STARTED SUCCESSFULLY ☢️")
+    add_activity("STARTUP", "Scheduler initialized with all jobs")
+
+except Exception as e:
+    logging.error(f"❌ CRITICAL ERROR: Scheduler failed to start: {e}")
+    logging.error("Bot will run in monitoring-only mode without automated tasks")
+    add_activity("ERROR", f"Scheduler initialization failed: {str(e)}")
+    scheduler = None
 
 # ------------------------------------------------------------
 # ACTIVATION FUNCTION - POST STARTUP MESSAGE
