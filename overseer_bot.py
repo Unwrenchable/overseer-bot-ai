@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import random
+import hashlib
 from datetime import datetime, timedelta
 import json
 import requests
@@ -338,7 +339,7 @@ def check_price_alerts():
             elif price_change < 0 and abs(price_change) >= config['alert_threshold_down']:
                 should_alert = True
             
-            if should_alert:
+            if should_alert and not is_price_alert_on_cooldown(symbol):
                 post_price_alert(symbol, current_data, price_change)
         
         # Update cache
@@ -368,13 +369,7 @@ def post_price_alert(symbol, price_data, price_change):
         direction = "SURGE" if price_change > 0 else "DIP"
         emoji = "📈🚀" if price_change > 0 else "📉⚠️"
         
-        personality_line = random.choice([
-            "The wasteland economy shifts.",
-            "Market radiation detected.",
-            "FizzCo Analytics reporting.",
-            "Vault-Tec market surveillance active.",
-            "The caps flow differently now."
-        ])
+        personality_line = get_personality_line()
         
         alert_messages = [
             (
@@ -403,13 +398,22 @@ def post_price_alert(symbol, price_data, price_change):
                 token_name, price_change, price_data['price']
             )
         
+        if is_duplicate_tweet(message):
+            logging.debug(f"Skipping duplicate price alert for {symbol}")
+            return
+
         client.create_tweet(text=message)
+        mark_tweet_sent(message)
+        mark_price_alert_sent(symbol)
         logging.info(f"Posted price alert for {symbol}: {price_change:+.2f}%")
         add_activity("PRICE_ALERT", f"{symbol} {price_change:+.2f}% - ${price_data['price']:.2f}")
         
     except tweepy.TweepyException as e:
-        logging.error(f"Failed to post price alert: {e}")
-        add_activity("ERROR", f"Price alert failed for {symbol}: {str(e)}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"Price alert for {symbol} skipped (duplicate content): {e}")
+        else:
+            logging.error(f"Failed to post price alert: {e}")
+            add_activity("ERROR", f"Price alert failed for {symbol}: {str(e)}")
 
 def post_market_summary():
     """Post a market summary with multiple token prices."""
@@ -477,6 +481,27 @@ def post_market_summary():
 # ------------------------------------------------------------
 app = Flask(__name__)
 auth = HTTPBasicAuth()
+
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers so overseer-bot-ui and other cross-origin clients can reach API endpoints."""
+    # Allow any origin for /api/* and /health endpoints; restrict others to same-origin.
+    path = request.path
+    if path.startswith('/api/') or path == '/health':
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Provider, X-Base-URL'
+    return response
+
+@app.route('/api/<path:_>', methods=['OPTIONS'])
+def api_preflight(_):
+    """Handle CORS preflight (OPTIONS) requests for all /api/* routes."""
+    from flask import Response as FlaskResponse
+    resp = FlaskResponse(status=204)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return resp
 
 @auth.verify_password
 def verify_password(username, password):
@@ -583,7 +608,7 @@ def monitoring_dashboard():
     
     # Get scheduler jobs info
     jobs_info = []
-    for job in scheduler.get_jobs():
+    for job in (scheduler.get_jobs() if scheduler else []):
         jobs_info.append({
             'id': job.id,
             'name': job.name,
@@ -1060,6 +1085,8 @@ def monitoring_dashboard():
                         <li><a href="/api/prices">/api/prices</a> - Current prices JSON</li>
                         <li><a href="/api/jobs">/api/jobs</a> - Scheduler jobs JSON</li>
                         <li><a href="/api/activities">/api/activities</a> - Recent activities JSON</li>
+                        <li><a href="/api/alerts">/api/alerts</a> - Recent alerts JSON</li>
+                        <li><a href="/api/scalper-events">/api/scalper-events</a> - Token-scalper events only</li>
                     </ul>
                     
                     <h3>Wallet APIs:</h3>
@@ -1115,8 +1142,8 @@ def api_status():
         "bot_name": BOT_NAME,
         "vault_number": VAULT_NUMBER,
         "start_time": BOT_START_TIME.isoformat(),
-        "scheduler_running": scheduler.running,
-        "jobs_count": len(scheduler.get_jobs())
+        "scheduler_running": scheduler.running if scheduler else False,
+        "jobs_count": len(scheduler.get_jobs()) if scheduler else 0
     }
 
 @app.route("/api/prices")
@@ -1134,7 +1161,7 @@ def api_prices():
 def api_jobs():
     """JSON endpoint for scheduler jobs"""
     jobs_info = []
-    for job in scheduler.get_jobs():
+    for job in (scheduler.get_jobs() if scheduler else []):
         jobs_info.append({
             'id': job.id,
             'name': job.name,
@@ -1158,6 +1185,17 @@ def api_alerts():
     with RECENT_ACTIVITIES_LOCK:
         activities_copy = list(reversed(RECENT_ACTIVITIES))
     return {"alerts": activities_copy}
+
+@app.route("/api/scalper-events")
+@auth.login_required
+def api_scalper_events():
+    """JSON endpoint filtered to Token-scalper events only (for overseer-bot-ui)."""
+    with RECENT_ACTIVITIES_LOCK:
+        scalper_events = [
+            a for a in reversed(RECENT_ACTIVITIES)
+            if a.get('type') == 'SCALPER_ALERT'
+        ]
+    return {"events": scalper_events, "count": len(scalper_events)}
 
 # ------------------------------------------------------------
 # WALLET API ROUTES (Optional - requires wallet configuration)
@@ -1407,10 +1445,19 @@ def handle_rug_pull_alert(alert_data: dict):
                 f"{GAME_LINK}"
             )[:TWITTER_CHAR_LIMIT]
         
+        if is_duplicate_tweet(message):
+            logging.debug(f"Skipping duplicate rug pull alert for {token_name}")
+            return
         client.create_tweet(text=message)
+        mark_tweet_sent(message)
         logging.info(f"Posted rug pull alert for {token_name}")
+        add_activity("SCALPER_ALERT", f"Rug pull: {token_name} ({severity.upper()})")
     except tweepy.TweepyException as e:
-        logging.error(f"Failed to post rug pull alert: {e}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"Rug pull alert skipped (duplicate content): {token_name}")
+        else:
+            logging.error(f"Failed to post rug pull alert: {e}")
+            add_activity("ERROR", f"Rug pull alert failed for {token_name}: {str(e)}")
 
 def handle_high_potential_alert(alert_data: dict):
     """Handle high potential token alert from Token-scalper"""
@@ -1451,10 +1498,19 @@ def handle_high_potential_alert(alert_data: dict):
                 f"{GAME_LINK}"
             )[:TWITTER_CHAR_LIMIT]
         
+        if is_duplicate_tweet(message):
+            logging.debug(f"Skipping duplicate high potential alert for {token_name}")
+            return
         client.create_tweet(text=message)
+        mark_tweet_sent(message)
         logging.info(f"Posted high potential alert for {token_name}")
+        add_activity("SCALPER_ALERT", f"High potential: {token_name} (score {score}/100)")
     except tweepy.TweepyException as e:
-        logging.error(f"Failed to post high potential alert: {e}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"High potential alert skipped (duplicate content): {token_name}")
+        else:
+            logging.error(f"Failed to post high potential alert: {e}")
+            add_activity("ERROR", f"High potential alert failed for {token_name}: {str(e)}")
 
 def handle_airdrop_alert(alert_data: dict):
     """Handle airdrop opportunity alert"""
@@ -1494,10 +1550,70 @@ def handle_airdrop_alert(alert_data: dict):
                 f"{GAME_LINK}"
             )[:TWITTER_CHAR_LIMIT]
         
+        if is_duplicate_tweet(message):
+            logging.debug(f"Skipping duplicate airdrop alert for {airdrop_name}")
+            return
         client.create_tweet(text=message)
+        mark_tweet_sent(message)
         logging.info(f"Posted airdrop alert for {airdrop_name}")
+        add_activity("SCALPER_ALERT", f"Airdrop: {airdrop_name} (~{value_estimate})")
     except tweepy.TweepyException as e:
-        logging.error(f"Failed to post airdrop alert: {e}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"Airdrop alert skipped (duplicate content): {airdrop_name}")
+        else:
+            logging.error(f"Failed to post airdrop alert: {e}")
+            add_activity("ERROR", f"Airdrop alert failed for {airdrop_name}: {str(e)}")
+
+# ------------------------------------------------------------
+# TWEET DEDUPLICATION & RATE-LIMITING STATE
+# ------------------------------------------------------------
+# Tracks hashes of recently posted tweet texts to avoid Twitter 187 errors.
+# dict of {md5_hash: posted_timestamp}; entries expire after 24 hours.
+RECENT_TWEET_HASHES: dict = {}
+RECENT_TWEET_HASHES_LOCK = threading.Lock()
+TWEET_DEDUP_WINDOW_SECONDS = 86400  # 24 hours
+
+# Per-symbol price alert cooldown (1 hour between alerts for same token).
+PRICE_ALERT_COOLDOWNS: dict = {}
+PRICE_ALERT_COOLDOWN_SECONDS = 3600  # 1 hour
+
+def _tweet_hash(text: str) -> str:
+    """Return the MD5 hex digest of a tweet text string."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+def is_duplicate_tweet(text: str) -> bool:
+    """Return True if the same tweet text was posted within the dedup window."""
+    h = _tweet_hash(text)
+    now = time.time()
+    with RECENT_TWEET_HASHES_LOCK:
+        # Expire old entries
+        expired = [k for k, ts in RECENT_TWEET_HASHES.items()
+                   if now - ts > TWEET_DEDUP_WINDOW_SECONDS]
+        for k in expired:
+            del RECENT_TWEET_HASHES[k]
+        return h in RECENT_TWEET_HASHES
+
+def mark_tweet_sent(text: str) -> None:
+    """Record that a tweet was successfully posted."""
+    h = _tweet_hash(text)
+    with RECENT_TWEET_HASHES_LOCK:
+        RECENT_TWEET_HASHES[h] = time.time()
+
+def is_price_alert_on_cooldown(symbol: str) -> bool:
+    """Return True if a price alert for *symbol* was posted within the cooldown window."""
+    last = PRICE_ALERT_COOLDOWNS.get(symbol, 0)
+    return (time.time() - last) < PRICE_ALERT_COOLDOWN_SECONDS
+
+def mark_price_alert_sent(symbol: str) -> None:
+    """Record that a price alert was just posted for *symbol*."""
+    PRICE_ALERT_COOLDOWNS[symbol] = time.time()
+
+def _is_twitter_duplicate_error(exc: tweepy.TweepyException) -> bool:
+    """Return True when Twitter rejected the tweet as a duplicate (error 187)."""
+    # Tweepy wraps API errors; check api_codes attribute or string representation.
+    if hasattr(exc, 'api_codes') and 187 in (exc.api_codes or []):
+        return True
+    return '187' in str(exc) or 'duplicate' in str(exc).lower()
 
 # ------------------------------------------------------------
 # FILES & MEDIA
@@ -1797,10 +1913,17 @@ def post_overseer_update(text):
         # Truncate if too long for Twitter
         if len(full_text) > TWITTER_CHAR_LIMIT:
             full_text = f"☢️ {text}\n\n{GAME_LINK}"[:TWITTER_CHAR_LIMIT]
+        if is_duplicate_tweet(full_text):
+            logging.debug(f"Skipping duplicate overseer update")
+            return
         client.create_tweet(text=full_text)
+        mark_tweet_sent(full_text)
         logging.info(f"Posted Overseer update: {text}")
     except tweepy.TweepyException as e:
-        logging.error(f"Failed to post Overseer update: {e}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"Overseer update skipped (duplicate content)")
+        else:
+            logging.error(f"Failed to post Overseer update: {e}")
 
 def handle_perk_event(event):
     """Handle perk unlock events with personality."""
@@ -2023,13 +2146,21 @@ def overseer_broadcast():
             if media_id:
                 media_ids = [media_id]
         
+        if is_duplicate_tweet(message):
+            logging.warning(f"Broadcast skipped (duplicate content): {broadcast_type}")
+            return
+
         client.create_tweet(text=message, media_ids=media_ids)
+        mark_tweet_sent(message)
         logging.info(f"Broadcast sent: {broadcast_type}")
         add_activity("BROADCAST", f"{broadcast_type} - {len(message)} chars")
         
     except tweepy.TweepyException as e:
-        logging.error(f"Broadcast failed: {e}")
-        add_activity("ERROR", f"Broadcast failed: {str(e)}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning(f"Broadcast skipped (Twitter duplicate): {broadcast_type}")
+        else:
+            logging.error(f"Broadcast failed: {e}")
+            add_activity("ERROR", f"Broadcast failed: {str(e)}")
 
 def overseer_respond():
     """Respond to mentions with personality-driven responses."""
@@ -2266,11 +2397,19 @@ def overseer_diagnostic():
         f"{random.choice(LORES)}\n\n"
         f"🎮 {GAME_LINK}"
     )
+    diag = diag[:TWITTER_CHAR_LIMIT]
     try:
-        client.create_tweet(text=diag[:TWITTER_CHAR_LIMIT])
+        if is_duplicate_tweet(diag):
+            logging.debug("Diagnostic skipped (duplicate content)")
+            return
+        client.create_tweet(text=diag)
+        mark_tweet_sent(diag)
         logging.info("Diagnostic posted")
     except tweepy.TweepyException as e:
-        logging.error(f"Diagnostic failed: {e}")
+        if _is_twitter_duplicate_error(e):
+            logging.warning("Diagnostic skipped (Twitter duplicate)")
+        else:
+            logging.error(f"Diagnostic failed: {e}")
 
 # ------------------------------------------------------------
 # SCHEDULER - ADJUSTED FOR BETTER ENGAGEMENT
