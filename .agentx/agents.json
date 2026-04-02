@@ -1127,5 +1127,23 @@
     ],
     "preferred_profile": "safe",
     "risk_level": "low"
+  },
+  {
+    "id": "overseer-content-creator",
+    "role": "Overseer-77 Content Creator",
+    "description": "Generates in-character social media content as OVERSEER-77 from Vault 77. Produces life-like, varied tweets grounded in Fallout lore (Vault 77, The Puppet Man, Subject J77, FizzCo, Atomic Fizz Caps). Uses LLM with the OVERSEER_SYSTEM_PROMPT to avoid generic template posts. Integrates live market context (SOL, BTC, ETH prices) and Fallout faction events into organic, non-formulaic content. Manages broadcast, reply, and diagnostic tweet generation with OpenAI or HuggingFace backends and a static-array fallback.",
+    "tags": ["overseer-bot-ai", "content-generation", "ai", "twitter", "fallout", "personality"],
+    "capabilities": [
+      "llm-tweet-generation",
+      "overseer-persona-enforcement",
+      "market-context-injection",
+      "fallout-lore-grounding",
+      "mention-reply-generation",
+      "broadcast-content-creation",
+      "static-fallback-management"
+    ],
+    "required_tools": ["read_file", "apply_patch", "run_in_terminal"],
+    "preferred_profile": "balanced",
+    "risk_level": "low"
   }
 ]
