@@ -1,0 +1,93 @@
+# ==============================================================================
+# LOCKED DEPENDENCY VERSIONS FOR RENDER.COM DEPLOYMENT
+# ==============================================================================
+# This file contains exact pinned versions of all dependencies to ensure:
+# 1. Consistent builds across deployments
+# 2. Better pip cache utilization on Render.com
+# 3. Faster build times (no version resolution needed)
+# 4. Reproducible builds
+#
+# Generated from successful Render.com deployment on 2026-02-13
+# Last updated: 2026-02-13
+#
+# To update dependencies:
+# 1. Modify requirements.txt (the source of truth for version constraints)
+# 2. Deploy to Render and check logs for installed versions
+# 3. Update this file with the new versions
+# 4. Commit both files together
+# ==============================================================================
+
+# Core dependencies with exact versions
+tweepy==4.16.0
+apscheduler==3.11.2
+requests==2.32.5
+flask==3.1.2
+flask-httpauth==4.8.0
+gunicorn==25.1.0
+ccxt==4.5.37
+solana==0.36.11
+solders==0.27.1
+base58==2.1.1
+web3==7.14.1
+
+# Sub-dependencies (automatically installed)
+aiodns==4.0.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.3
+aiosignal==1.4.0
+annotated-types==0.7.0
+anyio==4.12.1
+attrs==25.4.0
+bitarray==3.8.0
+blinker==1.9.0
+certifi==2026.1.4
+cffi==2.0.0
+charset-normalizer==3.4.4
+ckzg==2.1.5
+click==8.3.1
+construct==2.10.70
+construct-typing==0.7.0
+cryptography==46.0.5
+cytoolz==1.1.0
+eth-abi==5.2.0
+eth-account==0.13.7
+eth-hash==0.7.1
+eth-keyfile==0.8.1
+eth-keys==0.7.0
+eth-rlp==2.2.0
+eth-typing==5.2.1
+eth-utils==5.3.1
+frozenlist==1.8.0
+h11==0.16.0
+hexbytes==1.3.1
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.11
+itsdangerous==2.2.0
+jinja2==3.1.6
+jsonalias==0.1.1
+markupsafe==3.0.3
+multidict==6.7.1
+oauthlib==3.3.1
+packaging==26.0
+parsimonious==0.10.0
+propcache==0.4.1
+pycares==5.0.1
+pycparser==3.0
+pycryptodome==3.23.0
+pydantic==2.12.5
+pydantic-core==2.41.5
+pyunormalize==17.0.0
+regex==2026.1.15
+requests-oauthlib==2.0.0
+rlp==4.1.0
+setuptools==82.0.0
+toolz==1.1.0
+types-requests==2.32.4.20260107
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+tzlocal==5.3.1
+urllib3==2.6.3
+websockets==15.0.1
+werkzeug==3.1.5
+yarl==1.22.0

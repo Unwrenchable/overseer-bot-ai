@@ -1,0 +1,102 @@
+# ============================================================
+# RENDER.COM DEPLOYMENT CONFIGURATION
+# ============================================================
+# ⚠️ SECURITY NOTE: This file is committed to Git
+# - All sensitive variables use "sync: false"
+# - You MUST set these manually in Render's dashboard
+# - NEVER change "sync: false" to "sync: true" or add values for sensitive vars
+# - This prevents accidental exposure of secrets in Git
+# 
+# Variables with "sync: false" require manual setup in Render dashboard:
+# 1. Go to your service > Environment tab
+# 2. Add each variable with your actual secret values
+# 3. Save changes to apply
+# 
+# Non-sensitive variables (like endpoints) can have "value:" set here
+# ============================================================
+#
+# 📊 INSTANCE TYPE / PLAN CONFIGURATION
+# ============================================================
+# Current plan: 'free' (0.1 CPU, 512 MB RAM)
+# 
+# Available Render.com plans:
+# - free: Free tier (0.1 CPU, 512 MB) - Spins down after inactivity
+# - starter: $7/month (0.5 CPU, 512 MB) - Always on, no spin down
+# - standard: $25/month (1 CPU, 2 GB) - Better performance
+# - pro: $85/month (2 CPU, 4 GB) - High performance
+# - pro plus: $175/month (4 CPU, 8 GB) - Maximum performance
+#
+# 🔄 HOW TO UPGRADE YOUR INSTANCE TYPE:
+# ============================================================
+# Option 1: Via Render Dashboard (Recommended)
+# 1. Go to https://dashboard.render.com/
+# 2. Select your service (overseer-bot-ui)
+# 3. Go to "Settings" tab
+# 4. Scroll to "Instance Type" section
+# 5. Click "Update" button
+# 6. Select your desired plan (starter, standard, pro, etc.)
+# 7. Add payment information if not already added
+# 8. Confirm the upgrade
+# 9. Service will redeploy automatically with new resources
+#
+# Option 2: Update this file and push changes
+# 1. Change 'plan: free' below to your desired tier (e.g., 'plan: starter')
+# 2. Commit and push changes to your repository
+# 3. Render will automatically redeploy with the new plan
+# 4. You'll need payment information in Render to use paid plans
+#
+# ⚠️ IMPORTANT NOTES:
+# - Free tier spins down after 15 minutes of inactivity (cold starts)
+# - Paid tiers ($7+/month) stay always-on with no spin down
+# - Upgrading provides more CPU/RAM for better bot performance
+# - You can downgrade anytime through the dashboard
+# - See Render pricing: https://render.com/pricing
+# ============================================================
+services:
+  - type: web
+    name: overseer-bot
+    env: python
+    plan: free  # Change to 'starter' or higher for better performance (see docs below)
+    region: oregon
+    buildCommand: pip install -r requirements-lock.txt
+    startCommand: gunicorn --config gunicorn_config.py overseer_bot:app
+    envVars:
+      # Twitter API Credentials - MUST be set in Render dashboard
+      - key: CONSUMER_KEY
+        sync: false
+      - key: CONSUMER_SECRET
+        sync: false
+      - key: ACCESS_TOKEN
+        sync: false
+      - key: ACCESS_SECRET
+        sync: false
+      - key: BEARER_TOKEN
+        sync: false
+      
+      # Optional: Hugging Face AI - Set in Render dashboard if needed
+      - key: HUGGING_FACE_TOKEN
+        sync: false
+      
+      # Admin Authentication - CRITICAL: Set strong password in Render dashboard
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false  # MUST set secure password in dashboard!
+      
+      # Webhook API Key - Set in Render dashboard, must match Token-scalper config
+      - key: WEBHOOK_API_KEY
+        sync: false
+      
+      # Wallet Features - Optional: Set in Render dashboard if using wallet features
+      - key: ENABLE_WALLET_UI
+        value: "true"
+      - key: SOLANA_PRIVATE_KEY
+        sync: false  # CRITICAL: NEVER commit private keys!
+      - key: SOLANA_RPC_ENDPOINT
+        value: "https://api.mainnet-beta.solana.com"
+      - key: ETH_PRIVATE_KEY
+        sync: false  # CRITICAL: NEVER commit private keys!
+      - key: ETH_RPC_ENDPOINT
+        value: "https://eth.public-rpc.com"
+      - key: BSC_RPC_ENDPOINT
+        value: "https://bsc-dataseed1.binance.org"
