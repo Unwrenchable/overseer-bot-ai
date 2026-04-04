@@ -1243,7 +1243,7 @@ def api_alerts():
     external_alerts = api_client.get_alerts(limit=50)
     with RECENT_ACTIVITIES_LOCK:
         local_activities = list(reversed(RECENT_ACTIVITIES))
-    # Sanitize health data: only expose status/timestamps, not raw error messages
+    # Sanitize health data: error field is already a boolean flag in api_client
     raw_health = api_client.get_health_status()
     health = {
         svc: {
@@ -1265,6 +1265,7 @@ def api_alerts():
 def api_health():
     """JSON endpoint for external service health status"""
     raw_health = api_client.get_health_status()
+    # error field is already a boolean flag stored by api_client
     sanitized = {
         svc: {
             'status': info.get('status'),
