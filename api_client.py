@@ -35,13 +35,13 @@ HEALTH_STATUS = {
         'status': 'unknown',
         'last_check': None,
         'last_success': None,
-        'error': None
+        'error': False
     },
     'token_scalper': {
         'status': 'unknown',
         'last_check': None,
         'last_success': None,
-        'error': None
+        'error': False
     }
 }
 HEALTH_STATUS_LOCK = threading.Lock()
@@ -176,17 +176,18 @@ def update_health_status(service: str, status: str, error: str = None):
     
     Args:
         service: Service name ('overseer_bot_ai' or 'token_scalper')
-        status: Status string ('healthy', 'unhealthy', 'unknown')
-        error: Optional error message
+        status: Status string ('healthy', 'unhealthy', 'unknown', 'disabled')
+        error: Optional error message (logged but not stored to avoid leaking details in responses)
     """
     with HEALTH_STATUS_LOCK:
         HEALTH_STATUS[service]['status'] = status
         HEALTH_STATUS[service]['last_check'] = datetime.now().isoformat()
         if status == 'healthy':
             HEALTH_STATUS[service]['last_success'] = datetime.now().isoformat()
-            HEALTH_STATUS[service]['error'] = None
+            HEALTH_STATUS[service]['error'] = False
         else:
-            HEALTH_STATUS[service]['error'] = error
+            # Store a boolean flag only; raw error detail is already sent to the log
+            HEALTH_STATUS[service]['error'] = error is not None
 
 
 def get_health_status() -> dict:

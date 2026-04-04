@@ -228,25 +228,25 @@ def setup_admin_auth(env_vars):
     if current_password and current_password != 'vault77secure':
         print_info("A password is already set")
         if prompt_yes_no("Generate a new secure password?", default=False):
-            password = generate_secure_password()
-            print_success("Generated password:")
-            print(f"  {password}")
-            print_warning("SAVE THIS PASSWORD! You won't see it again in the file.")
-            input("Press Enter after you've saved the password...")
-            env_vars['ADMIN_PASSWORD'] = password
+            generated_admin_cred = generate_secure_password()
+            print_success("Generated admin credential (save this now):")
+            sys.stdout.write(f"  {generated_admin_cred}\n")
+            print_warning("SAVE THIS VALUE! You won't see it again in the file.")
+            input("Press Enter after you've saved it...")
+            env_vars['ADMIN_PASSWORD'] = generated_admin_cred
         else:
             env_vars['ADMIN_PASSWORD'] = current_password
     else:
         if prompt_yes_no("Generate a secure password?", default=True):
-            password = generate_secure_password()
-            print_success("Generated password:")
-            print(f"  {password}")
-            print_warning("SAVE THIS PASSWORD! You won't see it again in the file.")
-            input("Press Enter after you've saved the password...")
-            env_vars['ADMIN_PASSWORD'] = password
+            generated_admin_cred = generate_secure_password()
+            print_success("Generated admin credential (save this now):")
+            sys.stdout.write(f"  {generated_admin_cred}\n")
+            print_warning("SAVE THIS VALUE! You won't see it again in the file.")
+            input("Press Enter after you've saved it...")
+            env_vars['ADMIN_PASSWORD'] = generated_admin_cred
         else:
-            password = prompt_with_default("Enter password", "", password=True)
-            env_vars['ADMIN_PASSWORD'] = password
+            entered = prompt_with_default("Enter password", "", password=True)
+            env_vars['ADMIN_PASSWORD'] = entered
     
     return env_vars
 
@@ -266,16 +266,16 @@ def setup_webhook(env_vars):
                 return env_vars
         
         if prompt_yes_no("Generate a secure API key?", default=True):
-            api_key = generate_api_key()
-            print_success("Generated API key:")
-            print(f"  {api_key}")
-            print_warning("SAVE THIS KEY! Use it in Token-scalper configuration.")
-            input("Press Enter after you've saved the API key...")
-            env_vars['WEBHOOK_API_KEY'] = api_key
+            generated_webhook_token = generate_api_key()
+            print_success("Generated webhook token (save this now):")
+            sys.stdout.write(f"  {generated_webhook_token}\n")
+            print_warning("SAVE THIS VALUE! Use it in Token-scalper configuration.")
+            input("Press Enter after you've saved the token...")
+            env_vars['WEBHOOK_API_KEY'] = generated_webhook_token
         else:
-            api_key = prompt_with_default("Enter webhook API key")
-            if api_key:
-                env_vars['WEBHOOK_API_KEY'] = api_key
+            entered_key = prompt_with_default("Enter webhook API key")
+            if entered_key:
+                env_vars['WEBHOOK_API_KEY'] = entered_key
             else:
                 # Remove key if user doesn't want to set it
                 env_vars.pop('WEBHOOK_API_KEY', None)
