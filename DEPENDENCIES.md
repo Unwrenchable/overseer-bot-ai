@@ -174,7 +174,7 @@ Then follow the update workflow to lock the resolved versions.
 
 - `requirements.txt`: Development constraints
 - `requirements-lock.txt`: Production locks
-- `render.yaml`: Deployment configuration (line 61: buildCommand)
+- `render.yaml`: Deployment configuration (line 23: buildCommand)
 - `.gitignore`: Excludes `venv/` and `__pycache__/`
 
 ## Additional Resources
