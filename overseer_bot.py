@@ -1243,14 +1243,14 @@ def api_alerts():
     external_alerts = api_client.get_alerts(limit=50)
     with RECENT_ACTIVITIES_LOCK:
         local_activities = list(reversed(RECENT_ACTIVITIES))
-    # Sanitize health data: truncate error strings to avoid leaking raw exception details
+    # Sanitize health data: only expose status/timestamps, not raw error messages
     raw_health = api_client.get_health_status()
     health = {
         svc: {
             'status': info.get('status'),
             'last_check': info.get('last_check'),
             'last_success': info.get('last_success'),
-            'error': str(info.get('error') or '')[:200] or None
+            'has_error': bool(info.get('error'))
         }
         for svc, info in raw_health.items()
     }
@@ -1270,7 +1270,7 @@ def api_health():
             'status': info.get('status'),
             'last_check': info.get('last_check'),
             'last_success': info.get('last_success'),
-            'error': str(info.get('error') or '')[:200] or None
+            'has_error': bool(info.get('error'))
         }
         for svc, info in raw_health.items()
     }
