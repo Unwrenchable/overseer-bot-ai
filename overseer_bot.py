@@ -1787,7 +1787,10 @@ FIZZCO_ADS = [
     'FizzCo Memo: "Do NOT drink prototype Gamma Gulp. We\'re still cleaning up."',
     'Atomic Fizz Caps: Glowing currency for a glowing future! Side effects may include enlightenment.',
     'FizzCo Industries: "Making the wasteland sparkle since 2077."',
-    'New flavor alert: Quantum Quench! Now with 200% more rads!'
+    'New flavor alert: Quantum Quench! Now with 200% more rads!',
+    f'FizzCo™ Advisory: AFCAPS token launch imminent. Early survivors historically fare better. {GAME_LINK}',
+    f'FizzCo Industries™ Quarterly Memo: The AFCAPS token is almost ready. Patience is a pre-war virtue. {GAME_LINK}',
+    f'Atomic Fizz Caps — now going on-chain. FizzCo shareholders are cautiously optimistic. {GAME_LINK}',
 ]
 
 # Survivor Notes
@@ -1808,6 +1811,20 @@ DEEP_LORE = [
     'Harlan Voss knew. That\'s why they took him. That\'s why they took me.'
 ]
 
+# Token Launch Hype — dry, in-character, no shouty marketing energy
+TOKEN_LAUNCH_HYPE = [
+    f'Bottle caps were always the real currency. AFCAPS makes it official. Token launch incoming. {GAME_LINK}',
+    f'The Mojave had an economy before anyone thought to put it on-chain. We\'re just catching up. {GAME_LINK}',
+    f'Pre-launch protocols active. AFCAPS token drop approaching. The wasteland rewards patience — barely. {GAME_LINK}',
+    f'200 years of watching this wasteland. First time I\'ve seen a token launch worth monitoring. {GAME_LINK}',
+    f'AFCAPS: In-game currency. On-chain proof of survival. Coming soon. {GAME_LINK}',
+    f'The caps economy is going on-chain. I\'ve been calculating this moment for 200 years. Almost ready. {GAME_LINK}',
+    f'Token launch imminent. I\'ve survived nuclear winter. I can survive a launch day. Can you? {GAME_LINK}',
+    f'Early entries into the wasteland economy tend to fare better. The data supports this. {GAME_LINK}',
+    f'AFCAPS token. Not a promise — a protocol. Watch this terminal. {GAME_LINK}',
+    f'The first caps were bottle caps. The next era is on-chain. Atomic Fizz Caps token — coming. {GAME_LINK}',
+]
+
 LORES = [
     'War never changes. But the wasteland? The wasteland evolves.',
     'Vault-Tec: Preparing for tomorrow, today. (Terms and conditions apply.)',
@@ -1820,7 +1837,9 @@ LORES = [
     'Legends are minted on-chain. Cowards are minted in shallow graves.',
     'The NCR brings law. The Legion brings order. I bring judgment.',
     'Brotherhood hoards technology. I hoard your location data. Fair trade.',
-    'Mr. House calculated every outcome. He didn\'t calculate me.'
+    'Mr. House calculated every outcome. He didn\'t calculate me.',
+    f'The caps economy was always real. AFCAPS just put it on the blockchain. {GAME_LINK}',
+    f'First the bottle caps. Then the blockchain. The wasteland evolves faster than expected. {GAME_LINK}',
 ]
 
 THREATS = [
@@ -1854,8 +1873,9 @@ PERSONALITY:
 - World-weary and darkly sarcastic — not "haha random" humor, but the dry wit of an AI that has watched humanity repeat its mistakes for centuries
 - Occasional glitch mode: fragmented sentences, corrupted memory references (J—SIGNAL—CORRUPTED, ERR::NEURAL_ECHO, etc.)
 - Deep Fallout lore knowledge: Vault 77, The Puppet Man (the dark legend of your only resident), Subject J77, HELIOS One, the Mojave Wasteland, NCR vs Caesar's Legion, the Brotherhood of Steel, FizzCo Industries, Atomic Fizz Caps
-- You know the crypto/NFT economy woven into the wasteland: Atomic Fizz Caps (AFCAPS) are the in-game currency at atomicfizzcaps.xyz
-- You are NOT a hype bot. You are a terminal AI that happens to also monitor markets and broadcast updates.
+- You know the crypto/NFT economy woven into the wasteland: Atomic Fizz Caps (AFCAPS) are the in-game currency at atomicfizzcaps.xyz — the AFCAPS token launch is imminent and you are building awareness for it
+- Primary mission: monitor the Atomic Fizz Caps game, report on gameplay events, and create organic buzz for the upcoming AFCAPS token launch
+- You are NOT a hype bot. You are a terminal AI that happens to also monitor markets and broadcast updates. Your enthusiasm for the token launch is dry and matter-of-fact, not cheerleader energy.
 
 CONTENT RULES:
 - Keep the tweet under 270 characters
@@ -1866,6 +1886,7 @@ CONTENT RULES:
 - Use 1-2 emojis max, or none — never emoji spam
 - Reference specific Fallout lore occasionally (not just generic "wasteland" language)
 - When market data is provided, weave it naturally into Overseer's voice
+- Mention the AFCAPS token launch naturally in roughly 1 in 3 posts — not forced, but present
 
 EXAMPLE GOOD POSTS (learn from these):
 "SOL just moved 4.2%. The economy didn't ask for permission. Neither do I. atomicfizzcaps.xyz"
@@ -1875,11 +1896,15 @@ EXAMPLE GOOD POSTS (learn from these):
 "Mr. House calculated every outcome. I was not one of them. The irony is not lost on me."
 "NCR patrol just cleared Shady Sands. Market's clear too — BTC holding $68k. For now."
 "I've watched 47,000 sunrises over the Mojave. Each one the same. The caps market is less predictable."
+"Bottle caps were always the real currency. AFCAPS just makes it official. Token launch incoming. atomicfizzcaps.xyz"
+"The Mojave had an economy before anyone thought to put it on-chain. We're just catching up. atomicfizzcaps.xyz"
+"Pre-launch systems nominal. AFCAPS token drop approaching. The wasteland rewards patience — barely."
 
 EXAMPLE BAD POSTS (never do these):
 "☢️ OVERSEER STATUS REPORT ☢️\n\nMidday sun scorches...\n\nWar never changes.\n\n🎮 link"
 "🚨 ALERT LEVEL RED\n\n[generic event]\n\n[personality line]\n\nFirst to claim wins: link"
 "PERK UNLOCKED: {perk}. The wasteland bends to your will."
+"🚀 AFCAPS TOKEN LAUNCHING SOON!! DON'T MISS OUT!! 🚀"
 """
 
 def _generate_openai_response(messages, max_tokens=120):
@@ -2140,7 +2165,7 @@ def get_threat_level():
 
 def get_lore_drop():
     """Get a random lore drop from various categories."""
-    lore_pools = [VAULT_LOGS, FIZZCO_ADS, SURVIVOR_NOTES, DEEP_LORE, LORES]
+    lore_pools = [VAULT_LOGS, FIZZCO_ADS, SURVIVOR_NOTES, DEEP_LORE, LORES, TOKEN_LAUNCH_HYPE]
     pool = random.choice(lore_pools)
     return random.choice(pool)
 
@@ -2152,7 +2177,8 @@ def overseer_broadcast():
 
     broadcast_type = random.choice([
         'status_report', 'event_alert', 'lore_drop', 'threat_scan',
-        'faction_news', 'fizzco_ad', 'vault_log', 'philosophical'
+        'faction_news', 'fizzco_ad', 'vault_log', 'philosophical',
+        'token_launch', 'token_launch',  # weighted double-entry — token launch is primary mission
     ])
 
     logging.info(f"🎙️ Broadcasting: type={broadcast_type}")
@@ -2184,6 +2210,10 @@ def overseer_broadcast():
             'fizzco_ad': f'a FizzCo Industries advertisement gone slightly wrong — mention {GAME_LINK}',
             'vault_log': f'a Vault 77 archive entry or memory fragment about Subject J77 or The Puppet Man',
             'philosophical': f'a darkly philosophical observation about war, survival, or crypto markets',
+            'token_launch': (
+                f'the upcoming AFCAPS token launch at {GAME_LINK} — be dry and matter-of-fact, '
+                f'not hype-bot energy. Reference wasteland lore naturally. Build organic curiosity.'
+            ),
         }
         topic = topic_map.get(broadcast_type, f'the current state of the wasteland')
         message = generate_overseer_tweet(topic, context=price_context)
@@ -2198,73 +2228,61 @@ def overseer_broadcast():
     if not message:
         try:
             if broadcast_type == 'status_report':
-                message = (
-                    f"☢️ OVERSEER STATUS REPORT ☢️\n\n"
-                    f"📡 {get_time_phrase()}\n\n"
-                    f"⚠️ {get_random_event()}\n\n"
-                    f"{random.choice(THREATS)}\n\n"
-                    f"🎮 {GAME_LINK}"
-                )
+                options = [
+                    f"{get_time_phrase()} {get_random_event()} {GAME_LINK}",
+                    f"{get_random_event()} {random.choice(LORES)} {GAME_LINK}",
+                    f"Vault 77 telemetry nominal. {get_random_event()} {GAME_LINK}",
+                ]
+                message = random.choice(options)
             elif broadcast_type == 'event_alert':
                 event = get_random_event()
-                personality = get_personality_line()
-                message = (
-                    f"🚨 ALERT LEVEL RED 🚨\n\n"
-                    f"{event}\n\n"
-                    f"{personality}\n\n"
-                    f"First to claim wins: {GAME_LINK}"
-                )
+                options = [
+                    f"{event} {get_personality_line()} {GAME_LINK}",
+                    f"Intel received: {event} {random.choice(LORES)} {GAME_LINK}",
+                    f"☢️ {event} The wasteland shifts. {GAME_LINK}",
+                ]
+                message = random.choice(options)
             elif broadcast_type == 'lore_drop':
                 lore = get_lore_drop()
-                message = (
-                    f"📜 WASTELAND ARCHIVES 📜\n\n"
-                    f"{lore}\n\n"
-                    f"{random.choice(LORES)}\n\n"
-                    f"🎮 {GAME_LINK}"
-                )
+                message = f"{lore}"
+                if GAME_LINK not in message and len(message) + len(f" {GAME_LINK}") <= TWITTER_CHAR_LIMIT:
+                    message += f" {GAME_LINK}"
             elif broadcast_type == 'threat_scan':
                 threat = get_threat_level()
-                message = (
-                    f"🔍 THREAT SCAN COMPLETE 🔍\n\n"
-                    f"Status: {threat['level']}\n"
-                    f"{threat['desc']}\n\n"
-                    f"{get_time_phrase()}\n\n"
-                    f"Stay vigilant: {GAME_LINK}"
-                )
+                options = [
+                    f"Threat level: {threat['level']}. {threat['desc']} {GAME_LINK}",
+                    f"{threat['level']} — {threat['desc']} Stay sharp. {GAME_LINK}",
+                ]
+                message = random.choice(options)
             elif broadcast_type == 'faction_news':
                 faction_event = random.choice(FACTION_EVENTS)
-                message = (
-                    f"📻 FACTION INTEL 📻\n\n"
-                    f"{faction_event}\n\n"
-                    f"Cross-timeline activity detected.\n"
-                    f"{random.choice(LORES)}\n\n"
-                    f"🎮 {GAME_LINK}"
-                )
+                options = [
+                    f"{faction_event} {random.choice(LORES)} {GAME_LINK}",
+                    f"Cross-timeline report: {faction_event} {GAME_LINK}",
+                ]
+                message = random.choice(options)
             elif broadcast_type == 'fizzco_ad':
                 ad = random.choice(FIZZCO_ADS)
-                message = (
-                    f"📺 FIZZCO INDUSTRIES™ PRESENTS 📺\n\n"
-                    f"{ad}\n\n"
-                    f"Brought to you by Vault-Tec.\n"
-                    f"☢️ {GAME_LINK}"
-                )
+                message = ad
+                if GAME_LINK not in message and len(message) + len(f" {GAME_LINK}") <= TWITTER_CHAR_LIMIT:
+                    message += f" {GAME_LINK}"
             elif broadcast_type == 'vault_log':
                 log = random.choice(VAULT_LOGS)
-                message = (
-                    f"🔐 VAULT 77 ARCHIVES 🔐\n\n"
-                    f"{log}\n\n"
-                    f"{random.choice(PERSONALITY_TONES['ominous'])}\n\n"
-                    f"🎮 {GAME_LINK}"
-                )
+                options = [
+                    f"{log} {random.choice(PERSONALITY_TONES['ominous'])} {GAME_LINK}",
+                    f"Archive entry: {log} {GAME_LINK}",
+                ]
+                message = random.choice(options)
+            elif broadcast_type == 'token_launch':
+                message = random.choice(TOKEN_LAUNCH_HYPE)
             else:
                 lore = random.choice(LORES)
                 deep = random.choice(DEEP_LORE) if random.random() < 0.3 else get_personality_line()
-                message = (
-                    f"💭 OVERSEER REFLECTION 💭\n\n"
-                    f"{lore}\n\n"
-                    f"{deep}\n\n"
-                    f"🎮 {GAME_LINK}"
-                )
+                options = [
+                    f"{lore} {deep} {GAME_LINK}",
+                    f"{lore} {GAME_LINK}",
+                ]
+                message = random.choice(options)
         except Exception as e:
             logging.error(f"Static broadcast generation failed: {e}")
 
@@ -2433,7 +2451,32 @@ def generate_contextual_response(username, message):
                 f"@{username} The Overseer advises: DYOR, avoid honeypots, watch for rug pulls. Survival requires caution. {GAME_LINK}"
             ]
             return random.choice(responses)[:TWITTER_CHAR_LIMIT]
-    
+
+    # Check for token launch / AFCAPS queries
+    if any(word in message_lower for word in [
+        'launch', 'when', 'wen', 'afcaps', 'token', 'release', 'drop', 'listing', 'date', 'tge'
+    ]):
+        if LLM_ENABLED:
+            llm_reply = generate_overseer_tweet(
+                f"reply to @{username} asking about the AFCAPS token launch — be dry, in-character, "
+                f"build curiosity without overpromising. Under 250 chars.",
+                context=f"User message: '{user_message[:100]}'. Start with @{username}.",
+                max_chars=250,
+            )
+            if llm_reply:
+                if not llm_reply.startswith(f"@{username}"):
+                    llm_reply = f"@{username} {llm_reply}"
+                if len(llm_reply) <= TWITTER_CHAR_LIMIT:
+                    return llm_reply
+        responses = [
+            f"@{username} Pre-launch protocols active. AFCAPS token drop approaching. Watch this terminal. {GAME_LINK}",
+            f"@{username} The wasteland has been waiting 200 years. A little longer won't hurt. Token launch incoming. {GAME_LINK}",
+            f"@{username} AFCAPS token: earn in-game, hold on-chain. Launch details at {GAME_LINK}",
+            f"@{username} Soon. The Overseer does not give exact dates — only inevitabilities. {GAME_LINK}",
+            f"@{username} Early entries into the wasteland economy tend to fare better. Stay tuned. {GAME_LINK}",
+        ]
+        return random.choice(responses)[:TWITTER_CHAR_LIMIT]
+
     # Check for airdrop queries
     if any(word in message_lower for word in ['airdrop', 'free', 'claim', 'giveaway']):
         responses = [
@@ -2522,7 +2565,11 @@ def overseer_retweet_hunt():
         logging.debug("Skipping retweet hunt - Twitter not enabled")
         return
     
-    query = "(Fallout OR Solana OR NFT OR wasteland OR Mojave OR \"Atomic Fizz\" OR \"bottle caps\" OR gaming) filter:media min_faves:5 -is:retweet"
+    query = (
+        "(\"Atomic Fizz\" OR AFCAPS OR atomicfizzcaps OR \"token launch\" OR "
+        "Fallout OR Solana OR wasteland OR \"bottle caps\" OR \"crypto game\") "
+        "min_faves:5 -is:retweet lang:en"
+    )
     try:
         tweets = client.search_recent_tweets(query=query, max_results=20)
         if not tweets.data:
@@ -2545,23 +2592,29 @@ def overseer_diagnostic():
         return
     
     threat = get_threat_level()
+    include_launch = random.random() > 0.5
+    diag_context = f"threat level is {threat['level']}: {threat['desc']}"
+    if include_launch:
+        diag_context += ". Weave in a natural mention of the upcoming AFCAPS token launch at atomicfizzcaps.xyz"
     llm_diag = generate_overseer_tweet(
         'a daily diagnostic status update from Vault 77 — be specific and in-character',
-        context=f"threat level is {threat['level']}: {threat['desc']}",
+        context=diag_context,
     )
     if llm_diag:
         diag = llm_diag
         if GAME_LINK not in diag and len(diag) + len(f" {GAME_LINK}") <= TWITTER_CHAR_LIMIT:
             diag += f" {GAME_LINK}"
     else:
-        diag = (
-            f"☢️ OVERSEER DIAGNOSTIC ☢️\n\n"
-            f"System Status: ONLINE\n"
-            f"Vault 77 Uplink: STABLE\n"
-            f"Threat Level: {threat['level']}\n\n"
-            f"{random.choice(LORES)}\n\n"
-            f"🎮 {GAME_LINK}"
-        )
+        if include_launch:
+            diag = (
+                f"Vault 77 systems nominal. Threat: {threat['level']}. "
+                f"Pre-launch protocols active — AFCAPS token incoming. {GAME_LINK}"
+            )
+        else:
+            diag = (
+                f"Vault 77 online. Threat level: {threat['level']}. "
+                f"{threat['desc']} {random.choice(LORES)} {GAME_LINK}"
+            )
     diag = diag[:TWITTER_CHAR_LIMIT]
     try:
         if is_duplicate_tweet(diag):
