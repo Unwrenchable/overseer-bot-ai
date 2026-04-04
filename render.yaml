@@ -85,6 +85,20 @@ services:
       - key: REQUEST_TIMEOUT
         value: "5"
 
+      # Token Scalper - on-chain token scanner (DexScreener + rugcheck.xyz)
+      - key: ENABLE_SCALPER
+        value: "true"
+      - key: SCALPER_SCAN_INTERVAL
+        value: "120"
+      - key: SCALPER_POOL_MONITOR_INTERVAL
+        value: "300"
+      - key: SCALPER_MIN_OPPORTUNITY_SCORE
+        value: "70"
+      - key: SCALPER_RUG_LIQUIDITY_THRESHOLD
+        value: "50.0"
+      - key: SCALPER_MIN_LIQUIDITY_USD
+        value: "5000"
+
       # Render keep-alive - Set to your service URL to prevent sleeping on starter plan
       # e.g. https://overseer-bot.onrender.com
       - key: RENDER_EXTERNAL_URL

@@ -14,6 +14,7 @@ import ccxt
 import re
 import threading
 import api_client
+import scalper
 
 # Wallet integrations (optional imports)
 WALLET_ENABLED = False
@@ -1200,7 +1201,8 @@ def api_status():
         "vault_number": VAULT_NUMBER,
         "start_time": BOT_START_TIME.isoformat(),
         "scheduler_running": scheduler.running if scheduler else False,
-        "jobs_count": len(scheduler.get_jobs()) if scheduler else 0
+        "jobs_count": len(scheduler.get_jobs()) if scheduler else 0,
+        "scalper": scalper.get_status(),
     }
 
 @app.route("/api/prices")
@@ -2877,6 +2879,16 @@ def initialize_bot():
     api_client.start_polling()
     logging.info("External API polling started")
     add_activity("STARTUP", "External API polling started")
+
+    # Start on-chain token scalper (new token discovery + rug-pull monitoring)
+    scalper.start(
+        on_rug_pull=handle_rug_pull_alert,
+        on_high_potential=handle_high_potential_alert,
+        on_airdrop=handle_airdrop_alert,
+    )
+    if scalper.ENABLE_SCALPER:
+        logging.info("Token scalper started")
+        add_activity("STARTUP", "Token scalper started")
 
     logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
     add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
