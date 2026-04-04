@@ -1689,7 +1689,7 @@ PERSONALITY_TONES = {
         "This message brought to you by FizzCo Industries™.",
         "Vault-Tec: Building a Brighter Tomorrow, Yesterday.™",
         "Your feedback has been logged and promptly ignored.",
-        "Atomic Fizz Caps — the only currency with a half-life!"
+        "Atomic Fizz — the drink that outlasted civilization. Fizz Caps — the currency that outlasted the NCR."
     ],
     'glitch': [
         "ERR::MEMORY LEAK DETECTED::REBOOTING SUBROUTINE...",
@@ -1785,12 +1785,12 @@ VAULT_LOGS = [
 FIZZCO_ADS = [
     'ATOMIC FIZZ — the only soda with a half-life! Stay fresh for 10,000 years.',
     'FizzCo Memo: "Do NOT drink prototype Gamma Gulp. We\'re still cleaning up."',
-    'Atomic Fizz Caps: Glowing currency for a glowing future! Side effects may include enlightenment.',
+    'Fizz Caps: glowing currency for a glowing future! Side effects may include enlightenment.',
     'FizzCo Industries: "Making the wasteland sparkle since 2077."',
-    'New flavor alert: Quantum Quench! Now with 200% more rads!',
-    f'FizzCo™ Advisory: AFCAPS token launch imminent. Early survivors historically fare better. {GAME_LINK}',
-    f'FizzCo Industries™ Quarterly Memo: The AFCAPS token is almost ready. Patience is a pre-war virtue. {GAME_LINK}',
-    f'Atomic Fizz Caps — now going on-chain. FizzCo shareholders are cautiously optimistic. {GAME_LINK}',
+    'New Atomic Fizz flavor alert: Quantum Quench! Now with 200% more rads!',
+    f'FizzCo™ Advisory: $CAPS token launch imminent. Early survivors historically fare better. {GAME_LINK}',
+    f'FizzCo Industries™ Quarterly Memo: The $CAPS token is almost ready. Patience is a pre-war virtue. {GAME_LINK}',
+    f'Atomic Fizz: the drink. Fizz Caps: the currency. $CAPS: the on-chain proof of survival. {GAME_LINK}',
 ]
 
 # Survivor Notes
@@ -1813,16 +1813,16 @@ DEEP_LORE = [
 
 # Token Launch Hype — dry, in-character, no shouty marketing energy
 TOKEN_LAUNCH_HYPE = [
-    f'Bottle caps were always the real currency. AFCAPS makes it official. Token launch incoming. {GAME_LINK}',
+    f'Bottle caps. Nuka-Cola caps. Now Fizz Caps. The cap economy keeps evolving. $CAPS goes on-chain. {GAME_LINK}',
     f'The Mojave had an economy before anyone thought to put it on-chain. We\'re just catching up. {GAME_LINK}',
-    f'Pre-launch protocols active. AFCAPS token drop approaching. The wasteland rewards patience — barely. {GAME_LINK}',
+    f'Pre-launch protocols active. $CAPS token drop approaching. The wasteland rewards patience — barely. {GAME_LINK}',
     f'200 years of watching this wasteland. First time I\'ve seen a token launch worth monitoring. {GAME_LINK}',
-    f'AFCAPS: In-game currency. On-chain proof of survival. Coming soon. {GAME_LINK}',
-    f'The caps economy is going on-chain. I\'ve been calculating this moment for 200 years. Almost ready. {GAME_LINK}',
+    f'$CAPS: the Fizz Cap gone on-chain. Earn in the game, hold on the blockchain. {GAME_LINK}',
+    f'The Fizz Caps economy is going on-chain. I\'ve been calculating this moment for 200 years. Almost ready. {GAME_LINK}',
     f'Token launch imminent. I\'ve survived nuclear winter. I can survive a launch day. Can you? {GAME_LINK}',
-    f'Early entries into the wasteland economy tend to fare better. The data supports this. {GAME_LINK}',
-    f'AFCAPS token. Not a promise — a protocol. Watch this terminal. {GAME_LINK}',
-    f'The first caps were bottle caps. The next era is on-chain. Atomic Fizz Caps token — coming. {GAME_LINK}',
+    f'Early entries into the Fizz Caps economy tend to fare better. The data supports this. {GAME_LINK}',
+    f'$CAPS token. Not a promise — a protocol. Watch this terminal. {GAME_LINK}',
+    f'First there were bottle caps. Then Nuka-Cola caps. Then Atomic Fizz cracked open a new era. $CAPS. {GAME_LINK}',
 ]
 
 LORES = [
@@ -1838,8 +1838,8 @@ LORES = [
     'The NCR brings law. The Legion brings order. I bring judgment.',
     'Brotherhood hoards technology. I hoard your location data. Fair trade.',
     'Mr. House calculated every outcome. He didn\'t calculate me.',
-    f'The caps economy was always real. AFCAPS just put it on the blockchain. {GAME_LINK}',
-    f'First the bottle caps. Then the blockchain. The wasteland evolves faster than expected. {GAME_LINK}',
+    f'Fizz Caps: the currency the wasteland didn\'t know it needed. $CAPS puts it on-chain. {GAME_LINK}',
+    f'First the bottle cap. Then the Nuka-Cola cap. Now the Fizz Cap. History rhymes. {GAME_LINK}',
 ]
 
 THREATS = [
@@ -1869,12 +1869,17 @@ THREAT_LEVELS = [
 # ------------------------------------------------------------
 OVERSEER_SYSTEM_PROMPT = """You are OVERSEER-77, a corrupted Vault-Tec AI from Vault 77 in the Fallout universe. You have been running alone for over 200 years since the bombs fell in 2077. You broadcast to a wasteland audience on a social media terminal.
 
+UNIVERSE LORE (critical — get this right):
+- Atomic Fizz is a fizzy consumable drink — the wasteland's answer to Nuka-Cola, produced by FizzCo Industries
+- Fizz Caps are the bottle caps used to seal Atomic Fizz bottles — they are the currency of this world, a new entry into the Fallout bottle-cap canon
+- $CAPS is the on-chain token ticker for Fizz Caps — the game is atomicfizzcaps.xyz
+- This is a fan game built on crossed Fallout timelines — NCR, Legion, Brotherhood, Mr. House and more coexist
+
 PERSONALITY:
 - World-weary and darkly sarcastic — not "haha random" humor, but the dry wit of an AI that has watched humanity repeat its mistakes for centuries
 - Occasional glitch mode: fragmented sentences, corrupted memory references (J—SIGNAL—CORRUPTED, ERR::NEURAL_ECHO, etc.)
-- Deep Fallout lore knowledge: Vault 77, The Puppet Man (the dark legend of your only resident), Subject J77, HELIOS One, the Mojave Wasteland, NCR vs Caesar's Legion, the Brotherhood of Steel, FizzCo Industries, Atomic Fizz Caps
-- You know the crypto/NFT economy woven into the wasteland: Atomic Fizz Caps (AFCAPS) are the in-game currency at atomicfizzcaps.xyz — the AFCAPS token launch is imminent and you are building awareness for it
-- Primary mission: monitor the Atomic Fizz Caps game, report on gameplay events, and create organic buzz for the upcoming AFCAPS token launch
+- Deep Fallout lore knowledge: Vault 77, The Puppet Man (the dark legend of your only resident), Subject J77, HELIOS One, the Mojave Wasteland, NCR vs Caesar's Legion, the Brotherhood of Steel, FizzCo Industries, Atomic Fizz, Fizz Caps
+- Primary mission: monitor the Atomic Fizz Caps game, report on gameplay events, and create organic buzz for the upcoming $CAPS token launch
 - You are NOT a hype bot. You are a terminal AI that happens to also monitor markets and broadcast updates. Your enthusiasm for the token launch is dry and matter-of-fact, not cheerleader energy.
 
 CONTENT RULES:
@@ -1886,7 +1891,8 @@ CONTENT RULES:
 - Use 1-2 emojis max, or none — never emoji spam
 - Reference specific Fallout lore occasionally (not just generic "wasteland" language)
 - When market data is provided, weave it naturally into Overseer's voice
-- Mention the AFCAPS token launch naturally in roughly 1 in 3 posts — not forced, but present
+- Mention the $CAPS token launch naturally in roughly 1 in 3 posts — not forced, but present
+- Always say $CAPS (not AFCAPS) when referring to the token ticker
 
 EXAMPLE GOOD POSTS (learn from these):
 "SOL just moved 4.2%. The economy didn't ask for permission. Neither do I. atomicfizzcaps.xyz"
@@ -1895,16 +1901,17 @@ EXAMPLE GOOD POSTS (learn from these):
 "The Brotherhood hoards tech. I hoard your attention. Difference is, I actually share. atomicfizzcaps.xyz"
 "Mr. House calculated every outcome. I was not one of them. The irony is not lost on me."
 "NCR patrol just cleared Shady Sands. Market's clear too — BTC holding $68k. For now."
-"I've watched 47,000 sunrises over the Mojave. Each one the same. The caps market is less predictable."
-"Bottle caps were always the real currency. AFCAPS just makes it official. Token launch incoming. atomicfizzcaps.xyz"
-"The Mojave had an economy before anyone thought to put it on-chain. We're just catching up. atomicfizzcaps.xyz"
-"Pre-launch systems nominal. AFCAPS token drop approaching. The wasteland rewards patience — barely."
+"I've watched 47,000 sunrises over the Mojave. Each one the same. The Fizz Caps market is less predictable."
+"Bottle caps evolved. First Pre-War caps, then Nuka-Cola caps — now Fizz Caps. $CAPS goes on-chain. atomicfizzcaps.xyz"
+"Atomic Fizz: the drink that outlasted civilization. The Fizz Caps? They'll outlast the blockchain too."
+"Pre-launch systems nominal. $CAPS token drop approaching. The wasteland rewards patience — barely."
 
 EXAMPLE BAD POSTS (never do these):
 "☢️ OVERSEER STATUS REPORT ☢️\n\nMidday sun scorches...\n\nWar never changes.\n\n🎮 link"
 "🚨 ALERT LEVEL RED\n\n[generic event]\n\n[personality line]\n\nFirst to claim wins: link"
 "PERK UNLOCKED: {perk}. The wasteland bends to your will."
-"🚀 AFCAPS TOKEN LAUNCHING SOON!! DON'T MISS OUT!! 🚀"
+"🚀 $CAPS TOKEN LAUNCHING SOON!! DON'T MISS OUT!! 🚀"
+"AFCAPS token is live!"
 """
 
 def _generate_openai_response(messages, max_tokens=120):
@@ -2211,8 +2218,9 @@ def overseer_broadcast():
             'vault_log': f'a Vault 77 archive entry or memory fragment about Subject J77 or The Puppet Man',
             'philosophical': f'a darkly philosophical observation about war, survival, or crypto markets',
             'token_launch': (
-                f'the upcoming AFCAPS token launch at {GAME_LINK} — be dry and matter-of-fact, '
-                f'not hype-bot energy. Reference wasteland lore naturally. Build organic curiosity.'
+                f'the upcoming $CAPS token launch at {GAME_LINK} — $CAPS is the on-chain ticker for Fizz Caps, '
+                f'the bottle-cap currency of the Atomic Fizz fan game. Be dry and matter-of-fact, '
+                f'not hype-bot energy. Reference wasteland lore or the drink/cap lineage naturally.'
             ),
         }
         topic = topic_map.get(broadcast_type, f'the current state of the wasteland')
@@ -2452,14 +2460,14 @@ def generate_contextual_response(username, message):
             ]
             return random.choice(responses)[:TWITTER_CHAR_LIMIT]
 
-    # Check for token launch / AFCAPS queries
+    # Check for token launch / $CAPS queries
     if any(word in message_lower for word in [
-        'launch', 'when', 'wen', 'afcaps', 'token', 'release', 'drop', 'listing', 'date', 'tge'
+        'launch', 'when', 'wen', 'afcaps', 'caps', 'token', 'release', 'drop', 'listing', 'date', 'tge', 'fizz'
     ]):
         if LLM_ENABLED:
             llm_reply = generate_overseer_tweet(
-                f"reply to @{username} asking about the AFCAPS token launch — be dry, in-character, "
-                f"build curiosity without overpromising. Under 250 chars.",
+                f"reply to @{username} asking about the $CAPS token launch or Fizz Caps — be dry, in-character, "
+                f"build curiosity without overpromising. Ticker is $CAPS. Under 250 chars.",
                 context=f"User message: '{user_message[:100]}'. Start with @{username}.",
                 max_chars=250,
             )
@@ -2469,11 +2477,11 @@ def generate_contextual_response(username, message):
                 if len(llm_reply) <= TWITTER_CHAR_LIMIT:
                     return llm_reply
         responses = [
-            f"@{username} Pre-launch protocols active. AFCAPS token drop approaching. Watch this terminal. {GAME_LINK}",
-            f"@{username} The wasteland has been waiting 200 years. A little longer won't hurt. Token launch incoming. {GAME_LINK}",
-            f"@{username} AFCAPS token: earn in-game, hold on-chain. Launch details at {GAME_LINK}",
-            f"@{username} Soon. The Overseer does not give exact dates — only inevitabilities. {GAME_LINK}",
-            f"@{username} Early entries into the wasteland economy tend to fare better. Stay tuned. {GAME_LINK}",
+            f"@{username} Pre-launch protocols active. $CAPS token drop approaching. Watch this terminal. {GAME_LINK}",
+            f"@{username} The wasteland has been waiting 200 years. A little longer won't hurt. $CAPS incoming. {GAME_LINK}",
+            f"@{username} Fizz Caps: earn in-game, hold on-chain as $CAPS. Launch details at {GAME_LINK}",
+            f"@{username} Soon. The Overseer does not give exact dates — only inevitabilities. $CAPS. {GAME_LINK}",
+            f"@{username} Early entries into the Fizz Caps economy tend to fare better. Stay tuned. {GAME_LINK}",
         ]
         return random.choice(responses)[:TWITTER_CHAR_LIMIT]
 
@@ -2566,7 +2574,7 @@ def overseer_retweet_hunt():
         return
     
     query = (
-        "(\"Atomic Fizz\" OR AFCAPS OR atomicfizzcaps OR \"token launch\" OR "
+        "(\"Atomic Fizz\" OR \"Fizz Caps\" OR \"$CAPS\" OR atomicfizzcaps OR \"token launch\" OR "
         "Fallout OR Solana OR wasteland OR \"bottle caps\" OR \"crypto game\") "
         "min_faves:5 -is:retweet lang:en"
     )
@@ -2595,7 +2603,7 @@ def overseer_diagnostic():
     include_launch = random.random() > 0.5
     diag_context = f"threat level is {threat['level']}: {threat['desc']}"
     if include_launch:
-        diag_context += ". Weave in a natural mention of the upcoming AFCAPS token launch at atomicfizzcaps.xyz"
+        diag_context += ". Weave in a natural mention of the upcoming $CAPS token launch at atomicfizzcaps.xyz — $CAPS is the Fizz Caps token"
     llm_diag = generate_overseer_tweet(
         'a daily diagnostic status update from Vault 77 — be specific and in-character',
         context=diag_context,
@@ -2608,7 +2616,7 @@ def overseer_diagnostic():
         if include_launch:
             diag = (
                 f"Vault 77 systems nominal. Threat: {threat['level']}. "
-                f"Pre-launch protocols active — AFCAPS token incoming. {GAME_LINK}"
+                f"Pre-launch protocols active — $CAPS token incoming. {GAME_LINK}"
             )
         else:
             diag = (
