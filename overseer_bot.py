@@ -142,6 +142,9 @@ if WALLET_ENABLED and ENABLE_WALLET_UI:
 # This ensures safety even if initialization partially fails (e.g., TWITTER_ENABLED=True but client=None).
 client = None
 api_v1 = None
+TWITTER_READ_ENABLED = False  # Free tier only allows write (POST /2/tweets)
+bot_user_id = None            # Cached from tier-detection get_me() call
+bot_username = None           # Cached from tier-detection get_me() call
 
 if TWITTER_ENABLED:
     try:
@@ -166,6 +169,23 @@ if TWITTER_ENABLED:
         TWITTER_ENABLED = False
         client = None
         api_v1 = None
+
+    # Detect Twitter API tier (Basic/Pro vs Free) by probing get_me().
+    # Free tier returns 403 on all GET/read endpoints; we cache the result
+    # so overseer_respond() and overseer_retweet_hunt() can skip immediately.
+    if client:
+        try:
+            me = client.get_me()
+            if me and me.data:
+                TWITTER_READ_ENABLED = True
+                bot_user_id = me.data.id
+                bot_username = me.data.username
+                logging.info(f"✅ Twitter read access confirmed (Basic/Pro tier) — @{bot_username}")
+        except tweepy.errors.Forbidden:
+            logging.warning("⚠️  Twitter read access unavailable (Free tier — write-only mode)")
+            logging.warning("⚠️  To enable mentions/search: upgrade to Basic tier at developer.twitter.com")
+        except tweepy.TweepyException as e:
+            logging.warning(f"⚠️  Twitter read access check failed: {e}")
 
 # ------------------------------------------------------------
 # TOKEN SCALPER MODULE - PRICE MONITORING
@@ -2336,16 +2356,20 @@ def overseer_respond():
     if not TWITTER_ENABLED or not client:
         logging.debug("Skipping mention check - Twitter not enabled")
         return
-    
+    if not TWITTER_READ_ENABLED:
+        logging.debug("Skipping mention check - read access not available (free tier)")
+        return
+
     processed = load_json_set(PROCESSED_MENTIONS_FILE)
     try:
-        me = client.get_me()
-        if not me or not me.data:
-            logging.error("Failed to get bot user info")
+        # Use cached bot identity from startup tier detection — avoids an
+        # extra get_me() API call on every scheduler tick.
+        if not bot_user_id or not bot_username:
+            logging.error("Bot user identity not cached; skipping mention check")
             return
-            
+
         mentions = client.get_users_mentions(
-            me.data.id,
+            bot_user_id,
             max_results=50,
             tweet_fields=["author_id", "text"]
         )
@@ -2364,7 +2388,7 @@ def overseer_respond():
                 
             username = user_data.data.username
             user_message = mention.text.replace(
-                f"@{me.data.username}", ""
+                f"@{bot_username}", ""
             ).strip().lower()
 
             # Generate contextual response based on user message
@@ -2572,6 +2596,9 @@ def overseer_retweet_hunt():
     if not TWITTER_ENABLED or not client:
         logging.debug("Skipping retweet hunt - Twitter not enabled")
         return
+    if not TWITTER_READ_ENABLED:
+        logging.debug("Skipping retweet hunt - read access not available (free tier)")
+        return
     
     query = (
         "(\"Atomic Fizz\" OR \"Fizz Caps\" OR \"$CAPS\" OR atomicfizzcaps OR \"token launch\" OR "
@@ -2638,6 +2665,22 @@ def overseer_diagnostic():
             logging.error(f"Diagnostic failed: {e}")
 
 # ------------------------------------------------------------
+# KEEP-ALIVE — PREVENT RENDER.COM STARTER PLAN SLEEP
+# ------------------------------------------------------------
+RENDER_EXTERNAL_URL = os.getenv('RENDER_EXTERNAL_URL', '').rstrip('/')
+
+def keep_alive_ping():
+    """Ping own health endpoint to prevent Render.com service sleeping."""
+    if not RENDER_EXTERNAL_URL:
+        return
+    try:
+        url = f"{RENDER_EXTERNAL_URL}/health"
+        resp = requests.get(url, timeout=10)
+        logging.debug(f"Keep-alive ping: {resp.status_code}")
+    except Exception as e:
+        logging.warning(f"Keep-alive ping failed (service may sleep): {e}")
+
+# ------------------------------------------------------------
 # SCHEDULER - ADJUSTED FOR BETTER ENGAGEMENT
 # ------------------------------------------------------------
 try:
@@ -2669,6 +2712,11 @@ try:
     # Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
     scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0, id='market_summary')
     logging.info("Scheduler: post_market_summary job added (cron: 8 AM, 2 PM, 8 PM)")
+
+    # Keep-alive ping every 7 minutes (only when running on Render.com)
+    if RENDER_EXTERNAL_URL:
+        scheduler.add_job(keep_alive_ping, 'interval', minutes=7, id='keep_alive')
+        logging.info("Scheduler: keep_alive_ping job added (interval: 7 minutes)")
 
     scheduler.start()
     logging.info("☢️ SCHEDULER STARTED SUCCESSFULLY ☢️")
