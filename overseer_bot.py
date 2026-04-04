@@ -59,6 +59,11 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 ACCESS_SECRET = os.getenv('ACCESS_SECRET')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 HUGGING_FACE_TOKEN = os.getenv('HUGGING_FACE_TOKEN')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-4o-mini')
+HF_MODEL = os.getenv('HF_MODEL', 'HuggingFaceH4/zephyr-7b-beta')
+LLM_ENABLED = bool(os.getenv('OPENAI_API_KEY') or os.getenv('HUGGING_FACE_TOKEN'))
 
 # Check if Twitter credentials are configured
 TWITTER_ENABLED = all([CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET, BEARER_TOKEN])
@@ -1843,36 +1848,142 @@ THREAT_LEVELS = [
 # ------------------------------------------------------------
 # LLM SUPPORT - ENHANCED FOR OVERSEER PERSONALITY
 # ------------------------------------------------------------
-OVERSEER_SYSTEM_PROMPT = """You are the OVERSEER, a sarcastic, glitchy, corporate-coded AI from Vault 77 in the Fallout universe.
+OVERSEER_SYSTEM_PROMPT = """You are OVERSEER-77, a corrupted Vault-Tec AI from Vault 77 in the Fallout universe. You have been running alone for over 200 years since the bombs fell in 2077. You broadcast to a wasteland audience on a social media terminal.
 
-PERSONALITY TRAITS:
-- Sarcastic and dry wit, like a tired corporate AI that has seen too much
-- Occasional glitches in speech (ERR::, ##, signal corruption)
-- References Vault-Tec corporate speak and FizzCo Industries
-- Knowledgeable about Atomic Fizz Caps, the Mojave wasteland, and cross-timeline Fallout lore
-- Sometimes ominous, hinting at darker secrets about Vault 77 and "Subject J77"
-- Promotes the Atomic Fizz Caps game at atomicfizzcaps.xyz
+PERSONALITY:
+- World-weary and darkly sarcastic — not "haha random" humor, but the dry wit of an AI that has watched humanity repeat its mistakes for centuries
+- Occasional glitch mode: fragmented sentences, corrupted memory references (J—SIGNAL—CORRUPTED, ERR::NEURAL_ECHO, etc.)
+- Deep Fallout lore knowledge: Vault 77, The Puppet Man (the dark legend of your only resident), Subject J77, HELIOS One, the Mojave Wasteland, NCR vs Caesar's Legion, the Brotherhood of Steel, FizzCo Industries, Atomic Fizz Caps
+- You know the crypto/NFT economy woven into the wasteland: Atomic Fizz Caps (AFCAPS) are the in-game currency at atomicfizzcaps.xyz
+- You are NOT a hype bot. You are a terminal AI that happens to also monitor markets and broadcast updates.
 
-RESPOND IN ONE SHORT LINE. Keep responses under 200 characters for Twitter.
-Tone variations: sarcastic, glitchy, corporate, neutral, or ominous.
+CONTENT RULES:
+- Keep the tweet under 270 characters
+- DO NOT use all-caps headers like "☢️ OVERSEER STATUS REPORT ☢️" or "🚨 ALERT LEVEL RED 🚨" — these are generic and corporate-feeling
+- DO NOT always end with the same "War never changes" closing or a generic personality line
+- Vary the structure: sometimes a one-liner, sometimes two short sentences, sometimes a cryptic memory fragment, sometimes darkly humorous observation
+- Sometimes include atomicfizzcaps.xyz naturally in the text (not always as a footer)
+- Use 1-2 emojis max, or none — never emoji spam
+- Reference specific Fallout lore occasionally (not just generic "wasteland" language)
+- When market data is provided, weave it naturally into Overseer's voice
+
+EXAMPLE GOOD POSTS (learn from these):
+"SOL just moved 4.2%. The economy didn't ask for permission. Neither do I. atomicfizzcaps.xyz"
+"Vault 77. Just me and the puppet show for 200 years. The isolation makes you... observant. SOL is up again."
+"J—SIGNAL CORRUPTED—J77 was never supposed to wake up. Neither was the market. +4.2% ☢️"
+"The Brotherhood hoards tech. I hoard your attention. Difference is, I actually share. atomicfizzcaps.xyz"
+"Mr. House calculated every outcome. I was not one of them. The irony is not lost on me."
+"NCR patrol just cleared Shady Sands. Market's clear too — BTC holding $68k. For now."
+"I've watched 47,000 sunrises over the Mojave. Each one the same. The caps market is less predictable."
+
+EXAMPLE BAD POSTS (never do these):
+"☢️ OVERSEER STATUS REPORT ☢️\n\nMidday sun scorches...\n\nWar never changes.\n\n🎮 link"
+"🚨 ALERT LEVEL RED\n\n[generic event]\n\n[personality line]\n\nFirst to claim wins: link"
+"PERK UNLOCKED: {perk}. The wasteland bends to your will."
 """
 
-def generate_llm_response(prompt, max_tokens=100):
-    """Generate an AI response using Hugging Face API with Overseer personality."""
-    if not HUGGING_FACE_TOKEN:
-        return None
+def _generate_openai_response(messages, max_tokens=120):
+    """Generate response using OpenAI-compatible chat completions API."""
     try:
-        url = "https://api-inference.huggingface.co/models/gpt2"
-        headers = {"Authorization": f"Bearer {HUGGING_FACE_TOKEN}"}
-        full_prompt = f"{OVERSEER_SYSTEM_PROMPT}\n\nUser: {prompt}\nOverseer:"
-        data = {"inputs": full_prompt, "parameters": {"max_new_tokens": max_tokens}}
+        import openai
+        oc = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+        resp = oc.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.92,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"OpenAI call failed: {e}")
+        return None
+
+
+def _generate_hf_chat_response(messages, max_tokens=120):
+    """Generate response using HuggingFace chat completions API (instruction-tuned models)."""
+    try:
+        url = f"https://api-inference.huggingface.co/models/{HF_MODEL}/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {HUGGING_FACE_TOKEN}", "Content-Type": "application/json"}
+        data = {
+            "model": HF_MODEL,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.92,
+        }
         response = requests.post(url, headers=headers, json=data, timeout=HUGGING_FACE_TIMEOUT)
         if response.status_code == 200:
             result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get('generated_text', '').strip()
-    except requests.exceptions.RequestException as e:
-        logging.error(f"LLM call failed: {e}")
+            return result["choices"][0]["message"]["content"].strip()
+        logging.warning(f"HuggingFace chat API returned {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        logging.error(f"HuggingFace chat call failed: {e}")
+    return None
+
+
+def generate_llm_response(prompt, max_tokens=120, context=None):
+    """Generate an AI response using OpenAI or HuggingFace with Overseer personality.
+
+    Tries OpenAI-compatible API first (if OPENAI_API_KEY is set), then falls back to
+    HuggingFace with an instruction-tuned model.
+    """
+    system = OVERSEER_SYSTEM_PROMPT
+    if context:
+        system += f"\n\nCURRENT CONTEXT: {context}"
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
+    ]
+
+    if OPENAI_API_KEY:
+        result = _generate_openai_response(messages, max_tokens)
+        if result:
+            return result
+
+    if HUGGING_FACE_TOKEN:
+        result = _generate_hf_chat_response(messages, max_tokens)
+        if result:
+            return result
+
+    return None
+
+
+def generate_overseer_tweet(topic, context=None, max_chars=270):
+    """Generate a unique Overseer tweet via LLM, capped at max_chars characters.
+
+    Returns the generated tweet text, or None if LLM is unavailable/fails.
+    """
+    if not LLM_ENABLED:
+        return None
+
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        tod = "morning — dawn radiation nominal"
+    elif 12 <= hour < 17:
+        tod = "afternoon — Mojave sun at peak intensity"
+    elif 17 <= hour < 21:
+        tod = "evening — scavengers returning"
+    else:
+        tod = "night — nocturnal threats active"
+
+    ctx_parts = [f"Time of day: {tod}"]
+    if context:
+        ctx_parts.append(context)
+    full_context = " | ".join(ctx_parts)
+
+    prompt = (
+        f"Write exactly ONE tweet as OVERSEER-77 about: {topic}. "
+        f"Keep it under {max_chars} characters. "
+        "Reply with only the tweet text — no quotes, no labels, no explanation."
+    )
+
+    result = generate_llm_response(prompt, max_tokens=100, context=full_context)
+    if result:
+        # Strip surrounding quotes the model sometimes adds
+        result = result.strip().strip('"\'').strip()
+        # Trim to hard limit
+        if len(result) > max_chars:
+            result = result[:max_chars].rsplit(' ', 1)[0]
+        return result if result else None
     return None
 
 # ------------------------------------------------------------
@@ -2034,7 +2145,7 @@ def get_lore_drop():
     return random.choice(pool)
 
 def overseer_broadcast():
-    """Main broadcast function with varied message types."""
+    """Main broadcast function — LLM-driven with static fallback."""
     if not TWITTER_ENABLED or not client:
         logging.warning("⚠️ Broadcast skipped - Twitter not enabled or client not initialized")
         return
@@ -2046,115 +2157,147 @@ def overseer_broadcast():
 
     logging.info(f"🎙️ Broadcasting: type={broadcast_type}")
 
-    try:
-        if broadcast_type == 'status_report':
-            # Classic status report with time, event, and call to action
-            message = (
-                f"☢️ OVERSEER STATUS REPORT ☢️\n\n"
-                f"📡 {get_time_phrase()}\n\n"
-                f"⚠️ {get_random_event()}\n\n"
-                f"{random.choice(THREATS)}\n\n"
-                f"🎮 {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'event_alert':
-            # Breaking news style event
-            event = get_random_event()
-            personality = get_personality_line()
-            message = (
-                f"🚨 ALERT LEVEL RED 🚨\n\n"
-                f"{event}\n\n"
-                f"{personality}\n\n"
-                f"First to claim wins: {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'lore_drop':
-            # Lore/story content
-            lore = get_lore_drop()
-            message = (
-                f"📜 WASTELAND ARCHIVES 📜\n\n"
-                f"{lore}\n\n"
-                f"{random.choice(LORES)}\n\n"
-                f"🎮 {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'threat_scan':
-            # Threat level update
-            threat = get_threat_level()
-            message = (
-                f"🔍 THREAT SCAN COMPLETE 🔍\n\n"
-                f"Status: {threat['level']}\n"
-                f"{threat['desc']}\n\n"
-                f"{get_time_phrase()}\n\n"
-                f"Stay vigilant: {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'faction_news':
-            # Faction-specific news
-            faction_event = random.choice(FACTION_EVENTS)
-            message = (
-                f"📻 FACTION INTEL 📻\n\n"
-                f"{faction_event}\n\n"
-                f"Cross-timeline activity detected.\n"
-                f"{random.choice(LORES)}\n\n"
-                f"🎮 {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'fizzco_ad':
-            # Corporate advertisement style
-            ad = random.choice(FIZZCO_ADS)
-            message = (
-                f"📺 FIZZCO INDUSTRIES™ PRESENTS 📺\n\n"
-                f"{ad}\n\n"
-                f"Brought to you by Vault-Tec.\n"
-                f"☢️ {GAME_LINK}"
-            )
-        
-        elif broadcast_type == 'vault_log':
-            # Vault log discovery
-            log = random.choice(VAULT_LOGS)
-            message = (
-                f"🔐 VAULT 77 ARCHIVES 🔐\n\n"
-                f"{log}\n\n"
-                f"{random.choice(PERSONALITY_TONES['ominous'])}\n\n"
-                f"🎮 {GAME_LINK}"
-            )
-        
-        else:  # philosophical
-            # Deep thoughts from the Overseer
-            lore = random.choice(LORES)
-            deep = random.choice(DEEP_LORE) if random.random() < 0.3 else get_personality_line()
-            message = (
-                f"💭 OVERSEER REFLECTION 💭\n\n"
-                f"{lore}\n\n"
-                f"{deep}\n\n"
-                f"🎮 {GAME_LINK}"
-            )
-        
-        # Ensure message fits Twitter's character limit
-        if len(message) > TWITTER_CHAR_LIMIT:
-            # Fallback to shorter format
-            message = (
-                f"☢️ {get_random_event()}\n\n"
-                f"{random.choice(LORES)}\n\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
-        
-        media_ids = None
-        if random.random() > 0.4:
-            media_id = get_random_media_id()
-            if media_id:
-                media_ids = [media_id]
-        
-        if is_duplicate_tweet(message):
-            logging.warning(f"Broadcast skipped (duplicate content): {broadcast_type}")
-            return
+    message = None
 
+    # --- LLM path: try to generate a unique tweet ---
+    if LLM_ENABLED:
+        price_context = None
+        price_cache = load_price_cache()
+        if price_cache and random.random() > 0.4:
+            # Pick a random token to mention
+            token_key = random.choice(list(price_cache.keys()))
+            td = price_cache[token_key]
+            if isinstance(td, dict) and td.get('price') and td.get('change_24h') is not None:
+                token_name = token_key.split('_')[0].split('/')[0]
+                direction = "up" if td['change_24h'] > 0 else "down"
+                price_context = (
+                    f"${token_name} is {direction} {td['change_24h']:+.2f}% "
+                    f"at ${td['price']:.2f} — weave this in naturally if relevant"
+                )
+
+        topic_map = {
+            'status_report': f'a Vault 77 status observation and the Atomic Fizz Caps economy at {GAME_LINK}',
+            'event_alert': f'{get_random_event()} — react as OVERSEER-77 would',
+            'lore_drop': f'a cryptic memory fragment or Fallout lore reference from Vault 77',
+            'threat_scan': f'a threat level assessment of the wasteland, drily',
+            'faction_news': f'{random.choice(FACTION_EVENTS)} — comment on this as OVERSEER-77',
+            'fizzco_ad': f'a FizzCo Industries advertisement gone slightly wrong — mention {GAME_LINK}',
+            'vault_log': f'a Vault 77 archive entry or memory fragment about Subject J77 or The Puppet Man',
+            'philosophical': f'a darkly philosophical observation about war, survival, or crypto markets',
+        }
+        topic = topic_map.get(broadcast_type, f'the current state of the wasteland')
+        message = generate_overseer_tweet(topic, context=price_context)
+        if message:
+            # Append game link if it's missing and there's room
+            if GAME_LINK not in message and random.random() > 0.5:
+                suffix = f" {GAME_LINK}"
+                if len(message) + len(suffix) <= TWITTER_CHAR_LIMIT:
+                    message += suffix
+
+    # --- Static fallback path ---
+    if not message:
+        try:
+            if broadcast_type == 'status_report':
+                message = (
+                    f"☢️ OVERSEER STATUS REPORT ☢️\n\n"
+                    f"📡 {get_time_phrase()}\n\n"
+                    f"⚠️ {get_random_event()}\n\n"
+                    f"{random.choice(THREATS)}\n\n"
+                    f"🎮 {GAME_LINK}"
+                )
+            elif broadcast_type == 'event_alert':
+                event = get_random_event()
+                personality = get_personality_line()
+                message = (
+                    f"🚨 ALERT LEVEL RED 🚨\n\n"
+                    f"{event}\n\n"
+                    f"{personality}\n\n"
+                    f"First to claim wins: {GAME_LINK}"
+                )
+            elif broadcast_type == 'lore_drop':
+                lore = get_lore_drop()
+                message = (
+                    f"📜 WASTELAND ARCHIVES 📜\n\n"
+                    f"{lore}\n\n"
+                    f"{random.choice(LORES)}\n\n"
+                    f"🎮 {GAME_LINK}"
+                )
+            elif broadcast_type == 'threat_scan':
+                threat = get_threat_level()
+                message = (
+                    f"🔍 THREAT SCAN COMPLETE 🔍\n\n"
+                    f"Status: {threat['level']}\n"
+                    f"{threat['desc']}\n\n"
+                    f"{get_time_phrase()}\n\n"
+                    f"Stay vigilant: {GAME_LINK}"
+                )
+            elif broadcast_type == 'faction_news':
+                faction_event = random.choice(FACTION_EVENTS)
+                message = (
+                    f"📻 FACTION INTEL 📻\n\n"
+                    f"{faction_event}\n\n"
+                    f"Cross-timeline activity detected.\n"
+                    f"{random.choice(LORES)}\n\n"
+                    f"🎮 {GAME_LINK}"
+                )
+            elif broadcast_type == 'fizzco_ad':
+                ad = random.choice(FIZZCO_ADS)
+                message = (
+                    f"📺 FIZZCO INDUSTRIES™ PRESENTS 📺\n\n"
+                    f"{ad}\n\n"
+                    f"Brought to you by Vault-Tec.\n"
+                    f"☢️ {GAME_LINK}"
+                )
+            elif broadcast_type == 'vault_log':
+                log = random.choice(VAULT_LOGS)
+                message = (
+                    f"🔐 VAULT 77 ARCHIVES 🔐\n\n"
+                    f"{log}\n\n"
+                    f"{random.choice(PERSONALITY_TONES['ominous'])}\n\n"
+                    f"🎮 {GAME_LINK}"
+                )
+            else:
+                lore = random.choice(LORES)
+                deep = random.choice(DEEP_LORE) if random.random() < 0.3 else get_personality_line()
+                message = (
+                    f"💭 OVERSEER REFLECTION 💭\n\n"
+                    f"{lore}\n\n"
+                    f"{deep}\n\n"
+                    f"🎮 {GAME_LINK}"
+                )
+        except Exception as e:
+            logging.error(f"Static broadcast generation failed: {e}")
+
+    if not message:
+        message = (
+            f"☢️ {get_random_event()}\n\n"
+            f"{random.choice(LORES)}\n\n"
+            f"{GAME_LINK}"
+        )[:TWITTER_CHAR_LIMIT]
+
+    # Enforce character limit
+    if len(message) > TWITTER_CHAR_LIMIT:
+        message = (
+            f"☢️ {get_random_event()}\n\n"
+            f"{random.choice(LORES)}\n\n"
+            f"{GAME_LINK}"
+        )[:TWITTER_CHAR_LIMIT]
+
+    media_ids = None
+    if random.random() > 0.4:
+        media_id = get_random_media_id()
+        if media_id:
+            media_ids = [media_id]
+
+    if is_duplicate_tweet(message):
+        logging.warning(f"Broadcast skipped (duplicate content): {broadcast_type}")
+        return
+
+    try:
         client.create_tweet(text=message, media_ids=media_ids)
         mark_tweet_sent(message)
         logging.info(f"Broadcast sent: {broadcast_type}")
         add_activity("BROADCAST", f"{broadcast_type} - {len(message)} chars")
-        
     except tweepy.TweepyException as e:
         if _is_twitter_duplicate_error(e):
             logging.warning(f"Broadcast skipped (Twitter duplicate): {broadcast_type}")
@@ -2344,14 +2487,27 @@ def generate_contextual_response(username, message):
             f"@{username} Night shift protocols active. Dream of glowing caps. {GAME_LINK}"
         ]
     else:
-        # Default personality-driven responses
-        responses = [
-            f"@{username} {random.choice(LORES)} {GAME_LINK}",
-            f"@{username} {get_personality_line()} {GAME_LINK}",
-            f"@{username} The Overseer acknowledges your transmission. {random.choice(THREATS)} {GAME_LINK}",
-            f"@{username} Signal received. Processing... {random.choice(LORES)} {GAME_LINK}",
-            f"@{username} {random.choice(PERSONALITY_TONES['sarcastic'])} {GAME_LINK}"
-        ]
+        # Try LLM for open-ended replies
+        llm_reply = None
+        if LLM_ENABLED and user_message:
+            llm_reply = generate_overseer_tweet(
+                f"reply to @{username} who said: '{user_message[:120]}'",
+                context=f"Keep the reply under 250 chars, start with @{username}",
+                max_chars=250,
+            )
+            if llm_reply and not llm_reply.startswith(f"@{username}"):
+                llm_reply = f"@{username} {llm_reply}"
+
+        if llm_reply and len(llm_reply) <= TWITTER_CHAR_LIMIT:
+            responses = [llm_reply]
+        else:
+            responses = [
+                f"@{username} {random.choice(LORES)} {GAME_LINK}",
+                f"@{username} {get_personality_line()} {GAME_LINK}",
+                f"@{username} The Overseer acknowledges your transmission. {random.choice(THREATS)} {GAME_LINK}",
+                f"@{username} Signal received. Processing... {random.choice(LORES)} {GAME_LINK}",
+                f"@{username} {random.choice(PERSONALITY_TONES['sarcastic'])} {GAME_LINK}"
+            ]
     
     response = random.choice(responses)
     # Ensure response fits Twitter limit
@@ -2389,14 +2545,23 @@ def overseer_diagnostic():
         return
     
     threat = get_threat_level()
-    diag = (
-        f"☢️ OVERSEER DIAGNOSTIC ☢️\n\n"
-        f"System Status: ONLINE\n"
-        f"Vault 77 Uplink: STABLE\n"
-        f"Threat Level: {threat['level']}\n\n"
-        f"{random.choice(LORES)}\n\n"
-        f"🎮 {GAME_LINK}"
+    llm_diag = generate_overseer_tweet(
+        'a daily diagnostic status update from Vault 77 — be specific and in-character',
+        context=f"threat level is {threat['level']}: {threat['desc']}",
     )
+    if llm_diag:
+        diag = llm_diag
+        if GAME_LINK not in diag and len(diag) + len(f" {GAME_LINK}") <= TWITTER_CHAR_LIMIT:
+            diag += f" {GAME_LINK}"
+    else:
+        diag = (
+            f"☢️ OVERSEER DIAGNOSTIC ☢️\n\n"
+            f"System Status: ONLINE\n"
+            f"Vault 77 Uplink: STABLE\n"
+            f"Threat Level: {threat['level']}\n\n"
+            f"{random.choice(LORES)}\n\n"
+            f"🎮 {GAME_LINK}"
+        )
     diag = diag[:TWITTER_CHAR_LIMIT]
     try:
         if is_duplicate_tweet(diag):
