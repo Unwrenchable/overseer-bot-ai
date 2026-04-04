@@ -20,8 +20,8 @@ services:
     env: python
     plan: starter
     region: oregon
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 overseer_bot:app
+    buildCommand: pip install -r requirements-lock.txt
+    startCommand: gunicorn --config gunicorn_config.py overseer_bot:app
     envVars:
       # Twitter API Credentials - MUST be set in Render dashboard
       - key: CONSUMER_KEY
@@ -70,6 +70,20 @@ services:
         value: "gpt-4o-mini"
       - key: OPENAI_BASE_URL
         value: "https://api.openai.com/v1"
+
+      # External API Integration - Optional: for overseer-bot-ui dashboard connectivity
+      - key: OVERSEER_BOT_AI_URL
+        sync: false
+      - key: OVERSEER_BOT_AI_API_KEY
+        sync: false
+      - key: TOKEN_SCALPER_URL
+        sync: false
+      - key: TOKEN_SCALPER_API_KEY
+        sync: false
+      - key: POLL_INTERVAL
+        value: "15"
+      - key: REQUEST_TIMEOUT
+        value: "5"
 
       # Render keep-alive - Set to your service URL to prevent sleeping on starter plan
       # e.g. https://overseer-bot.onrender.com
