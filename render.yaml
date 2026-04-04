@@ -62,3 +62,16 @@ services:
         value: "https://eth.public-rpc.com"
       - key: BSC_RPC_ENDPOINT
         value: "https://bsc-dataseed1.binance.org"
+
+      # LLM features - Optional: Set in Render dashboard for AI-powered tweets
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: "gpt-4o-mini"
+      - key: OPENAI_BASE_URL
+        value: "https://api.openai.com/v1"
+
+      # Render keep-alive - Set to your service URL to prevent sleeping on starter plan
+      # e.g. https://overseer-bot.onrender.com
+      - key: RENDER_EXTERNAL_URL
+        sync: false
