@@ -2713,7 +2713,7 @@ try:
     scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0, id='market_summary')
     logging.info("Scheduler: post_market_summary job added (cron: 8 AM, 2 PM, 8 PM)")
 
-    # Keep-alive ping every 10 minutes (only when running on Render.com)
+    # Keep-alive ping every 7 minutes (only when running on Render.com)
     if RENDER_EXTERNAL_URL:
         scheduler.add_job(keep_alive_ping, 'interval', minutes=7, id='keep_alive')
         logging.info("Scheduler: keep_alive_ping job added (interval: 7 minutes)")
