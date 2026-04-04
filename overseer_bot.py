@@ -13,6 +13,8 @@ from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
 import threading
+import api_client
+import scalper
 
 # Wallet integrations (optional imports)
 WALLET_ENABLED = False
@@ -233,54 +235,85 @@ COINGECKO_MAPPING = {
     'ETH/USDT': 'ethereum'
 }
 
+COINGECKO_CACHE = {}
+COINGECKO_CACHE_TTL = 60  # seconds
+COINGECKO_BACKOFF = 5     # initial backoff in seconds
+COINGECKO_MAX_BACKOFF = 60
+
 def get_token_price_coingecko(symbol):
     """
     Fetch token price from CoinGecko API (fallback when exchanges are geo-blocked).
-    CoinGecko has no geographic restrictions and provides reliable price data.
-    
+
     Note: CoinGecko simple API has limitations:
     - high_24h and low_24h are not available (returns None)
     - Downstream consumers should handle None values for these fields
-    
+    - Rate limited: 10-30 req/min on free tier; uses backoff on 429
+
     Returns:
         dict: Price data with 'source': 'coingecko' or None on error
     """
-    try:
-        coin_id = COINGECKO_MAPPING.get(symbol)
-        if not coin_id:
-            logging.warning(f"No CoinGecko mapping for {symbol}")
-            return None
-        
-        url = f"https://api.coingecko.com/api/v3/simple/price"
-        params = {
-            'ids': coin_id,
-            'vs_currencies': 'usd',
-            'include_24hr_change': 'true',
-            'include_24hr_vol': 'true'
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if coin_id not in data:
-            logging.error(f"CoinGecko returned no data for {coin_id}")
-            return None
-        
-        coin_data = data[coin_id]
-        
-        return {
-            'price': coin_data.get('usd', 0),
-            'high_24h': None,  # CoinGecko simple API doesn't provide this
-            'low_24h': None,   # CoinGecko simple API doesn't provide this
-            'volume_24h': coin_data.get('usd_24h_vol', 0),
-            'change_24h': coin_data.get('usd_24h_change', 0),
-            'timestamp': time.time(),
-            'source': 'coingecko'
-        }
-    except Exception as e:
-        logging.error(f"Failed to fetch price from CoinGecko for {symbol}: {e}")
+    coin_id = COINGECKO_MAPPING.get(symbol)
+    if not coin_id:
+        logging.warning(f"No CoinGecko mapping for {symbol}")
         return None
+
+    cache_key = f"{symbol}_coingecko"
+    now = time.time()
+    if cache_key in COINGECKO_CACHE:
+        cached = COINGECKO_CACHE[cache_key]
+        if now - cached['timestamp'] < COINGECKO_CACHE_TTL:
+            logging.info(f"Using cached CoinGecko price for {symbol}")
+            return cached['data']
+
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        'ids': coin_id,
+        'vs_currencies': 'usd',
+        'include_24hr_change': 'true',
+        'include_24hr_vol': 'true'
+    }
+
+    backoff = COINGECKO_BACKOFF
+    retry_limit = 5
+    retries = 0
+    while retries < retry_limit:
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 429:
+                logging.warning(f"CoinGecko rate limited. Backing off {backoff}s...")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, COINGECKO_MAX_BACKOFF)
+                retries += 1
+                continue
+            response.raise_for_status()
+            data = response.json()
+
+            if coin_id not in data:
+                logging.error(f"CoinGecko returned no data for {coin_id}")
+                return None
+
+            coin_data = data[coin_id]
+            result = {
+                'price': coin_data.get('usd', 0),
+                'high_24h': None,  # CoinGecko simple API doesn't provide this
+                'low_24h': None,   # CoinGecko simple API doesn't provide this
+                'volume_24h': coin_data.get('usd_24h_vol', 0),
+                'change_24h': coin_data.get('usd_24h_change', 0),
+                'timestamp': time.time(),
+                'source': 'coingecko'
+            }
+            COINGECKO_CACHE[cache_key] = {'timestamp': now, 'data': result}
+            return result
+
+        except requests.exceptions.HTTPError as e:
+            logging.error(f"HTTP error from CoinGecko for {symbol}: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"Failed to fetch price from CoinGecko for {symbol}: {e}")
+            return None
+
+    logging.error(f"CoinGecko rate limit exceeded retry limit ({retry_limit}) for {symbol}")
+    return None
 
 def is_geo_restriction_error(exception):
     """
@@ -1168,7 +1201,8 @@ def api_status():
         "vault_number": VAULT_NUMBER,
         "start_time": BOT_START_TIME.isoformat(),
         "scheduler_running": scheduler.running if scheduler else False,
-        "jobs_count": len(scheduler.get_jobs()) if scheduler else 0
+        "jobs_count": len(scheduler.get_jobs()) if scheduler else 0,
+        "scalper": scalper.get_status(),
     }
 
 @app.route("/api/prices")
@@ -1206,10 +1240,44 @@ def api_activities():
 @app.route("/api/alerts")
 @auth.login_required
 def api_alerts():
-    """JSON endpoint for recent alerts (alias for activities)"""
+    """JSON endpoint for recent alerts - merges api_client alerts with local activities"""
+    # Merge external API alerts with local RECENT_ACTIVITIES
+    external_alerts = api_client.get_alerts(limit=50)
     with RECENT_ACTIVITIES_LOCK:
-        activities_copy = list(reversed(RECENT_ACTIVITIES))
-    return {"alerts": activities_copy}
+        local_activities = list(reversed(RECENT_ACTIVITIES))
+    # Sanitize health data: error field is already a boolean flag in api_client
+    raw_health = api_client.get_health_status()
+    health = {
+        svc: {
+            'status': info.get('status'),
+            'last_check': info.get('last_check'),
+            'last_success': info.get('last_success'),
+            'has_error': bool(info.get('error'))
+        }
+        for svc, info in raw_health.items()
+    }
+    return jsonify({
+        "alerts": external_alerts,
+        "activities": local_activities,
+        "health": health
+    })
+
+@app.route("/api/health")
+@auth.login_required
+def api_health():
+    """JSON endpoint for external service health status"""
+    raw_health = api_client.get_health_status()
+    # error field is already a boolean flag stored by api_client
+    sanitized = {
+        svc: {
+            'status': info.get('status'),
+            'last_check': info.get('last_check'),
+            'last_success': info.get('last_success'),
+            'has_error': bool(info.get('error'))
+        }
+        for svc, info in raw_health.items()
+    }
+    return jsonify(sanitized)
 
 @app.route("/api/scalper-events")
 @auth.login_required
@@ -2681,52 +2749,9 @@ def keep_alive_ping():
         logging.warning(f"Keep-alive ping failed (service may sleep): {e}")
 
 # ------------------------------------------------------------
-# SCHEDULER - ADJUSTED FOR BETTER ENGAGEMENT
+# SCHEDULER - initialized here; jobs added in initialize_bot()
 # ------------------------------------------------------------
-try:
-    scheduler = BackgroundScheduler()
-
-    # Broadcast every 2-4 hours with randomized intervals
-    broadcast_interval = random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL)
-    scheduler.add_job(overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast')
-    logging.info(f"Scheduler: overseer_broadcast job added (interval: {broadcast_interval} minutes)")
-
-    # Check mentions every 15-30 minutes with randomized intervals
-    mention_interval = random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL)
-    scheduler.add_job(overseer_respond, 'interval', minutes=mention_interval, id='mentions')
-    logging.info(f"Scheduler: overseer_respond job added (interval: {mention_interval} minutes)")
-
-    # Retweet hunt every hour
-    scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1, id='retweet')
-    logging.info("Scheduler: overseer_retweet_hunt job added (interval: 1 hour)")
-
-    # Daily diagnostic at 8 AM
-    scheduler.add_job(overseer_diagnostic, 'cron', hour=8, id='diagnostic')
-    logging.info("Scheduler: overseer_diagnostic job added (cron: 8 AM daily)")
-
-    # Token Scalper Features
-    # Check prices and send alerts every 5 minutes
-    scheduler.add_job(check_price_alerts, 'interval', minutes=5, id='price_check')
-    logging.info("Scheduler: check_price_alerts job added (interval: 5 minutes)")
-
-    # Post market summary 3 times a day (8 AM, 2 PM, 8 PM)
-    scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0, id='market_summary')
-    logging.info("Scheduler: post_market_summary job added (cron: 8 AM, 2 PM, 8 PM)")
-
-    # Keep-alive ping every 7 minutes (only when running on Render.com)
-    if RENDER_EXTERNAL_URL:
-        scheduler.add_job(keep_alive_ping, 'interval', minutes=7, id='keep_alive')
-        logging.info("Scheduler: keep_alive_ping job added (interval: 7 minutes)")
-
-    scheduler.start()
-    logging.info("☢️ SCHEDULER STARTED SUCCESSFULLY ☢️")
-    add_activity("STARTUP", "Scheduler initialized with all jobs")
-
-except Exception as e:
-    logging.error(f"❌ CRITICAL ERROR: Scheduler failed to start: {e}")
-    logging.error("Bot will run in monitoring-only mode without automated tasks")
-    add_activity("ERROR", f"Scheduler initialization failed: {str(e)}")
-    scheduler = None
+scheduler = BackgroundScheduler()
 
 # ------------------------------------------------------------
 # ACTIVATION FUNCTION - POST STARTUP MESSAGE
@@ -2789,19 +2814,84 @@ def post_activation_tweet():
         logging.warning(f"Activation tweet failed (may be duplicate): {e}")
         add_activity("ERROR", f"Activation tweet failed: {str(e)}")
 
-# Post activation tweet after a short delay to ensure scheduler is ready
-# Using a thread to avoid blocking the import process
-def delayed_activation():
-    """Post activation tweet after a 5 second delay"""
-    time.sleep(5)
-    post_activation_tweet()
 
-activation_thread = threading.Thread(target=delayed_activation, daemon=True)
-activation_thread.start()
+def initialize_bot():
+    """
+    Initialize the bot by setting up the scheduler, starting background services,
+    and posting the activation tweet.
 
-# Log monitoring UI info - Gunicorn will serve the Flask app
-logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
-add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
+    Called from:
+    - gunicorn_config.py post_worker_init hook (production)
+    - if __name__ == '__main__' block (development)
+    """
+    global scheduler
+    if scheduler and scheduler.running:
+        logging.warning("initialize_bot() called but scheduler is already running – skipping.")
+        return
+
+    try:
+        if scheduler is None:
+            scheduler = BackgroundScheduler()
+
+        broadcast_interval = random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL)
+        scheduler.add_job(overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast')
+        logging.info(f"Scheduler: overseer_broadcast job added (interval: {broadcast_interval} minutes)")
+
+        mention_interval = random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL)
+        scheduler.add_job(overseer_respond, 'interval', minutes=mention_interval, id='mentions')
+        logging.info(f"Scheduler: overseer_respond job added (interval: {mention_interval} minutes)")
+
+        scheduler.add_job(overseer_retweet_hunt, 'interval', hours=1, id='retweet')
+        logging.info("Scheduler: overseer_retweet_hunt job added (interval: 1 hour)")
+
+        scheduler.add_job(overseer_diagnostic, 'cron', hour=8, id='diagnostic')
+        logging.info("Scheduler: overseer_diagnostic job added (cron: 8 AM daily)")
+
+        scheduler.add_job(check_price_alerts, 'interval', minutes=5, id='price_check')
+        logging.info("Scheduler: check_price_alerts job added (interval: 5 minutes)")
+
+        scheduler.add_job(post_market_summary, 'cron', hour='8,14,20', minute=0, id='market_summary')
+        logging.info("Scheduler: post_market_summary job added (cron: 8 AM, 2 PM, 8 PM)")
+
+        if RENDER_EXTERNAL_URL:
+            scheduler.add_job(keep_alive_ping, 'interval', minutes=7, id='keep_alive')
+            logging.info("Scheduler: keep_alive_ping job added (interval: 7 minutes)")
+
+        scheduler.start()
+        logging.info("☢️ SCHEDULER STARTED SUCCESSFULLY ☢️")
+        add_activity("STARTUP", "Scheduler initialized with all jobs")
+
+    except Exception as e:
+        logging.error(f"❌ CRITICAL ERROR: Scheduler failed to start: {e}")
+        logging.error("Bot will run in monitoring-only mode without automated tasks")
+        add_activity("ERROR", f"Scheduler initialization failed: {str(e)}")
+        scheduler = None
+
+    # Post activation tweet after a short delay
+    def delayed_activation():
+        time.sleep(5)
+        post_activation_tweet()
+
+    activation_thread = threading.Thread(target=delayed_activation, daemon=True)
+    activation_thread.start()
+
+    # Start external API polling (overseer-bot-ai <-> overseer-bot-ui bridge)
+    api_client.start_polling()
+    logging.info("External API polling started")
+    add_activity("STARTUP", "External API polling started")
+
+    # Start on-chain token scalper (new token discovery + rug-pull monitoring)
+    scalper.start(
+        on_rug_pull=handle_rug_pull_alert,
+        on_high_potential=handle_high_potential_alert,
+        on_airdrop=handle_airdrop_alert,
+    )
+    if scalper.ENABLE_SCALPER:
+        logging.info("Token scalper started")
+        add_activity("STARTUP", "Token scalper started")
+
+    logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
+    add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
 
 # ------------------------------------------------------------
 # MAIN LOOP (for direct execution only)
@@ -2814,9 +2904,11 @@ if __name__ == "__main__":
     In production with Gunicorn, this block is NOT executed.
     Gunicorn will:
     1. Import the module
-    2. Initialize the scheduler and background tasks (above)
+    2. Initialize the scheduler and background tasks via gunicorn_config.py post_worker_init
     3. Serve the Flask app using its production WSGI server
     """
+    initialize_bot()
+
     def run_flask_app():
         """
         Run Flask app in a separate thread for development mode.
