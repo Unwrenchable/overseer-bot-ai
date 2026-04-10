@@ -65,7 +65,9 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
 LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-4o-mini')
 HF_MODEL = os.getenv('HF_MODEL', 'HuggingFaceH4/zephyr-7b-beta')
-LLM_ENABLED = bool(os.getenv('OPENAI_API_KEY') or os.getenv('HUGGING_FACE_TOKEN'))
+XAI_API = os.getenv('XAI_API')
+XAI_MODEL = os.getenv('XAI_MODEL', 'grok-3-mini')
+LLM_ENABLED = bool(os.getenv('OPENAI_API_KEY') or os.getenv('HUGGING_FACE_TOKEN') or os.getenv('XAI_API'))
 
 # Check if Twitter credentials are configured
 TWITTER_ENABLED = all([CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET, BEARER_TOKEN])
@@ -2019,6 +2021,23 @@ def _generate_openai_response(messages, max_tokens=120):
         return None
 
 
+def _generate_xai_response(messages, max_tokens=120):
+    """Generate response using xAI (Grok) via its OpenAI-compatible API."""
+    try:
+        import openai
+        xc = openai.OpenAI(api_key=XAI_API, base_url="https://api.x.ai/v1")
+        resp = xc.chat.completions.create(
+            model=XAI_MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.92,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"xAI (Grok) call failed: {e}")
+        return None
+
+
 def _generate_hf_chat_response(messages, max_tokens=120):
     """Generate response using HuggingFace chat completions API (instruction-tuned models)."""
     try:
@@ -2040,12 +2059,43 @@ def _generate_hf_chat_response(messages, max_tokens=120):
     return None
 
 
-def generate_llm_response(prompt, max_tokens=120, context=None):
-    """Generate an AI response using OpenAI or HuggingFace with Overseer personality.
+_REFUSAL_PHRASES = (
+    "i'm sorry", "i cannot", "i can't", "as an ai", "i'm an ai",
+    "i am unable", "i must decline", "i apologize",
+)
 
-    Tries OpenAI-compatible API first (if OPENAI_API_KEY is set), then falls back to
-    HuggingFace with an instruction-tuned model.
+
+def _score_response(text, max_tokens=120):
+    """Score an AI response for quality. Higher is better. Returns 0 for unusable responses."""
+    if not text:
+        return 0
+    lower = text.lower()
+    if any(phrase in lower for phrase in _REFUSAL_PHRASES):
+        return 0
+    length = len(text)
+    if length < 15:
+        return 0
+    # Prefer responses that fill roughly 40-95% of the character budget
+    char_budget = max_tokens * 4  # rough chars-per-token estimate
+    ideal_min = int(char_budget * 0.4)
+    ideal_max = int(char_budget * 0.95)
+    if ideal_min <= length <= ideal_max:
+        score = 100
+    elif length > ideal_max:
+        score = max(10, 100 - (length - ideal_max))
+    else:
+        score = max(10, 60 - (ideal_min - length))
+    return score
+
+
+def generate_llm_response(prompt, max_tokens=120, context=None):
+    """Generate an AI response using the unified ensemble of all available AI providers.
+
+    Calls OpenAI, xAI (Grok), and HuggingFace in parallel, scores each response for
+    quality, and returns the best result. Falls back gracefully if any provider fails.
     """
+    import concurrent.futures
+
     system = OVERSEER_SYSTEM_PROMPT
     if context:
         system += f"\n\nCURRENT CONTEXT: {context}"
@@ -2054,15 +2104,45 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
         {"role": "user", "content": prompt},
     ]
 
+    # Build the list of active providers
+    providers = []
     if OPENAI_API_KEY:
-        result = _generate_openai_response(messages, max_tokens)
-        if result:
-            return result
-
+        providers.append(("OpenAI", _generate_openai_response))
+    if XAI_API:
+        providers.append(("xAI-Grok", _generate_xai_response))
     if HUGGING_FACE_TOKEN:
-        result = _generate_hf_chat_response(messages, max_tokens)
-        if result:
-            return result
+        providers.append(("HuggingFace", _generate_hf_chat_response))
+
+    if not providers:
+        return None
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as executor:
+        futures = {
+            executor.submit(fn, messages, max_tokens): name
+            for name, fn in providers
+        }
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as e:
+                logging.error(f"Ensemble provider {name} raised: {e}")
+                results[name] = None
+
+    # Score all responses and pick the best
+    best_name, best_text, best_score = None, None, 0
+    for name, text in results.items():
+        score = _score_response(text, max_tokens)
+        logging.debug(f"AI ensemble — {name}: score={score}, len={len(text) if text else 0}")
+        if score > best_score:
+            best_score = score
+            best_text = text
+            best_name = name
+
+    if best_text:
+        logging.info(f"AI ensemble winner: {best_name} (score={best_score})")
+        return best_text
 
     return None
 
