@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Root service dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+
+  # UI service dependencies
+  - package-ecosystem: "pip"
+    directory: "/overseer-bot-ui-main"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
