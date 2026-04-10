@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch, call
 # the full requirements set (solana, web3, ccxt, etc.)
 # ---------------------------------------------------------------------------
 
-def _make_stub(name):
+def _create_stub_module(name):
     mod = types.ModuleType(name)
     sys.modules[name] = mod
     return mod
@@ -32,7 +32,7 @@ for _stub in ['ccxt', 'solana', 'solana.rpc', 'solana.rpc.api',
               'solders.transaction', 'base58', 'web3',
               'api_client', 'scalper']:
     if _stub not in sys.modules:
-        _make_stub(_stub)
+        _create_stub_module(_stub)
 
 # Provide attribute stubs that overseer_bot accesses at import time
 sys.modules['base58'].b58decode = lambda x: b'\x00' * 32
@@ -290,21 +290,23 @@ class TestPostPriceAlert(unittest.TestCase):
             "BTC/USDT should be on cooldown immediately after mark"
 
     def test_does_not_post_duplicate_tweet(self):
+        """A text that was already posted (and marked in the dedup cache) must not be re-posted."""
         price_data = {'price': 45000.0, 'change_24h': 6.0}
-        # Post once (this also sets cooldown)
+        # Post the first tweet so we know the exact text that was sent
         bot.post_price_alert("BTC/USDT", price_data, 6.0)
-        # Reset cooldown but keep dedup hash so the exact same text is blocked
-        _reset_price_cooldowns()
+        assert self.mock_client.create_tweet.call_count == 1, "First post should call create_tweet once"
         first_call_text = self.mock_client.create_tweet.call_args[1]['text']
-        # Manually pre-load the dedup entry for the same text
+
+        # Now pre-load the dedup entry with the exact same text and reset cooldown
+        _reset_price_cooldowns()
         bot.mark_tweet_sent(first_call_text)
         self.mock_client.create_tweet.reset_mock()
-        bot.post_price_alert("BTC/USDT", price_data, 6.0)
-        # create_tweet should not be called again for the exact duplicate
-        # (random message selection means the second call *may* differ, so
-        # we only assert it was not called if the text would be identical;
-        # we verify the dedup logic works end-to-end instead)
-        # The key assertion is that no exception was raised.
+
+        # Force the same text by patching the random selection in post_price_alert
+        with patch.object(bot.random, 'choice', return_value=first_call_text):
+            bot.post_price_alert("BTC/USDT", price_data, 6.0)
+
+        self.mock_client.create_tweet.assert_not_called()
 
     def test_handles_tweepy_exception_gracefully(self):
         self.mock_client.create_tweet.side_effect = bot.tweepy.TweepyException("rate limit")
