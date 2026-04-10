@@ -20,7 +20,7 @@
 # Core dependencies with exact versions
 tweepy==4.16.0
 apscheduler==3.11.2
-requests==2.32.5
+requests==2.33.0
 flask==3.1.2
 flask-httpauth==4.8.0
 gunicorn==25.1.0
