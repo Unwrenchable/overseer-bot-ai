@@ -486,6 +486,25 @@ class TestLoreContent(unittest.TestCase):
         line = bot.get_personality_line()
         assert isinstance(line, str) and len(line) > 0
 
+    def test_elon_troll_tone_exists(self):
+        """elon_troll must be a registered personality tone with content."""
+        assert 'elon_troll' in bot.PERSONALITY_TONES, "elon_troll tone must exist in PERSONALITY_TONES"
+        assert len(bot.PERSONALITY_TONES['elon_troll']) >= 5, "elon_troll tone must have at least 5 lines"
+
+    def test_elon_troll_lines_stay_in_character(self):
+        """Elon troll lines must not be blatantly political — in-character dry wit only."""
+        political_keywords = ["hate", "evil", "criminal", "traitor", "fascist"]
+        full_text = " ".join(bot.PERSONALITY_TONES['elon_troll']).lower()
+        for kw in political_keywords:
+            assert kw not in full_text, f"elon_troll lines must stay in character — found '{kw}'"
+
+    def test_elon_troll_lines_reference_mr_house_or_vault_tec(self):
+        """At least one elon_troll line should draw a Fallout in-universe parallel."""
+        fallout_terms = ["house", "vault", "rocket", "caps", "doge", "terminal", "wasteland", "musk", "x "]
+        full_text = " ".join(bot.PERSONALITY_TONES['elon_troll']).lower()
+        found = any(term in full_text for term in fallout_terms)
+        assert found, "elon_troll lines should include Fallout-universe parallels or in-character framing"
+
     def test_get_threat_level_returns_valid_dict(self):
         threat = bot.get_threat_level()
         assert 'level' in threat
