@@ -2555,10 +2555,13 @@ def overseer_broadcast():
     random.shuffle(type_pool)
 
     for attempt in range(MAX_BROADCAST_ATTEMPTS):
-        broadcast_type = type_pool[attempt % len(type_pool)]
+        broadcast_type = type_pool[attempt]
         logging.info(f"🎙️ Broadcasting: type={broadcast_type} (attempt {attempt + 1})")
 
         message = _compose_broadcast_message(broadcast_type)
+        if not message:
+            logging.warning(f"Broadcast attempt {attempt + 1} produced no message: {broadcast_type} — retrying")
+            continue
 
         if is_duplicate_tweet(message):
             logging.warning(
