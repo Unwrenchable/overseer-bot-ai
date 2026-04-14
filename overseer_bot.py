@@ -47,8 +47,8 @@ VAULT_NUMBER = "77"
 # Configuration constants
 TWITTER_CHAR_LIMIT = 280
 HUGGING_FACE_TIMEOUT = 10
-BROADCAST_MIN_INTERVAL = 120  # minutes
-BROADCAST_MAX_INTERVAL = 240  # minutes
+BROADCAST_MIN_INTERVAL = 60   # minutes
+BROADCAST_MAX_INTERVAL = 120  # minutes
 MENTION_CHECK_MIN_INTERVAL = 15  # minutes
 MENTION_CHECK_MAX_INTERVAL = 30  # minutes
 
@@ -1929,6 +1929,21 @@ TOKEN_LAUNCH_HYPE = [
     f'Early entries into the Fizz Caps economy tend to fare better. The data supports this. {GAME_LINK}',
     f'$CAPS token. Not a promise — a protocol. Watch this terminal. {GAME_LINK}',
     f'First there were bottle caps. Then Nuka-Cola caps. Then Atomic Fizz cracked open a new era. $CAPS. {GAME_LINK}',
+    f'The wasteland runs on caps. It always did. $CAPS just makes it auditable. {GAME_LINK}',
+    f'Vault-Tec built the vaults. FizzCo built the economy. $CAPS puts it on-chain. You\'re welcome. {GAME_LINK}',
+    f'I\'ve watched currencies rise and fall for two centuries. $CAPS has the best survival odds I\'ve computed. {GAME_LINK}',
+    f'Atomic Fizz: the drink that outlasted civilisation. $CAPS: the token built for what comes next. {GAME_LINK}',
+    f'FizzCo said "what if caps, but decentralised?" The Overseer approved this message. $CAPS. {GAME_LINK}',
+    f'The NCR had brahmin-backed currency. The Legion used coercion. We\'re using $CAPS. Evolution. {GAME_LINK}',
+    f'Every survivor hoards caps. $CAPS lets you hoard them on-chain. Same instinct, better infrastructure. {GAME_LINK}',
+    f'Fizz Cap distribution underway. The wasteland economy is going trustless. $CAPS leads the charge. {GAME_LINK}',
+    f'Patience is a pre-war virtue. The $CAPS launch rewards it. Status: imminent. {GAME_LINK}',
+    f'Mr. House calculated every outcome. He didn\'t calculate $CAPS. His loss. Your gain. {GAME_LINK}',
+    f'The Pip-Boy tracks your stats. $CAPS tracks your worth. Different metrics, same wasteland. {GAME_LINK}',
+    f'Atomic Fizz powers the wasteland. $CAPS powers the economy behind it. Get in. {GAME_LINK}',
+    f'Two hundred years of economic observation. Conclusion: caps matter. $CAPS matters more. {GAME_LINK}',
+    f'Brotherhood hoards tech. Legion hoards land. Smart survivors hoard $CAPS. {GAME_LINK}',
+    f'Vault 77 archives confirm: the cap economy predates the bombs. $CAPS just makes it last longer. {GAME_LINK}',
 ]
 
 LORES = [
@@ -2391,20 +2406,19 @@ def get_lore_drop():
     pool = random.choice(lore_pools)
     return random.choice(pool)
 
-def overseer_broadcast():
-    """Main broadcast function — LLM-driven with static fallback."""
-    if not TWITTER_ENABLED or not client:
-        logging.warning("⚠️ Broadcast skipped - Twitter not enabled or client not initialized")
-        return
+_BROADCAST_TYPES = [
+    'status_report', 'event_alert', 'lore_drop', 'threat_scan',
+    'faction_news', 'fizzco_ad', 'vault_log', 'philosophical',
+    'token_launch', 'token_launch',  # weighted double-entry — token launch is primary mission
+]
 
-    broadcast_type = random.choice([
-        'status_report', 'event_alert', 'lore_drop', 'threat_scan',
-        'faction_news', 'fizzco_ad', 'vault_log', 'philosophical',
-        'token_launch', 'token_launch',  # weighted double-entry — token launch is primary mission
-    ])
 
-    logging.info(f"🎙️ Broadcasting: type={broadcast_type}")
+def _compose_broadcast_message(broadcast_type: str) -> str | None:
+    """Build a tweet string for *broadcast_type*.
 
+    Returns the message text, or None on hard failure.
+    LLM path is tried first; static pool is the fallback.
+    """
     message = None
 
     # --- LLM path: try to generate a unique tweet ---
@@ -2412,7 +2426,6 @@ def overseer_broadcast():
         price_context = None
         price_cache = load_price_cache()
         if price_cache and random.random() > 0.4:
-            # Pick a random token to mention
             token_key = random.choice(list(price_cache.keys()))
             td = price_cache[token_key]
             if isinstance(td, dict) and td.get('price') and td.get('change_24h') is not None:
@@ -2438,10 +2451,9 @@ def overseer_broadcast():
                 f'not hype-bot energy. Reference wasteland lore or the drink/cap lineage naturally.'
             ),
         }
-        topic = topic_map.get(broadcast_type, f'the current state of the wasteland')
+        topic = topic_map.get(broadcast_type, 'the current state of the wasteland')
         message = generate_overseer_tweet(topic, context=price_context)
         if message:
-            # Append game link if it's missing and there's room
             if GAME_LINK not in message and random.random() > 0.5:
                 suffix = f" {GAME_LINK}"
                 if len(message) + len(suffix) <= TWITTER_CHAR_LIMIT:
@@ -2516,7 +2528,6 @@ def overseer_broadcast():
             f"{GAME_LINK}"
         )[:TWITTER_CHAR_LIMIT]
 
-    # Enforce character limit
     if len(message) > TWITTER_CHAR_LIMIT:
         message = (
             f"☢️ {get_random_event()}\n\n"
@@ -2524,27 +2535,64 @@ def overseer_broadcast():
             f"{GAME_LINK}"
         )[:TWITTER_CHAR_LIMIT]
 
-    media_ids = None
-    if random.random() > 0.4:
-        media_id = get_random_media_id()
-        if media_id:
-            media_ids = [media_id]
+    return message
 
-    if is_duplicate_tweet(message):
-        logging.warning(f"Broadcast skipped (duplicate content): {broadcast_type}")
+
+def overseer_broadcast():
+    """Main broadcast function — LLM-driven with static fallback.
+
+    Retries up to MAX_BROADCAST_ATTEMPTS times with different broadcast types
+    when a generated message turns out to be a duplicate, so the bot always
+    finds something fresh to post rather than silently giving up.
+    """
+    if not TWITTER_ENABLED or not client:
+        logging.warning("⚠️ Broadcast skipped - Twitter not enabled or client not initialized")
         return
 
-    try:
-        client.create_tweet(text=message, media_ids=media_ids)
-        mark_tweet_sent(message)
-        logging.info(f"Broadcast sent: {broadcast_type}")
-        add_activity("BROADCAST", f"{broadcast_type} - {len(message)} chars")
-    except tweepy.TweepyException as e:
-        if _is_twitter_duplicate_error(e):
-            logging.warning(f"Broadcast skipped (Twitter duplicate): {broadcast_type}")
-        else:
-            logging.error(f"Broadcast failed: {e}")
-            add_activity("ERROR", f"Broadcast failed: {str(e)}")
+    MAX_BROADCAST_ATTEMPTS = 4
+    # Shuffle a fresh copy of the type list so each attempt draws a distinct type
+    type_pool = _BROADCAST_TYPES[:]
+    random.shuffle(type_pool)
+
+    for attempt in range(MAX_BROADCAST_ATTEMPTS):
+        broadcast_type = type_pool[attempt % len(type_pool)]
+        logging.info(f"🎙️ Broadcasting: type={broadcast_type} (attempt {attempt + 1})")
+
+        message = _compose_broadcast_message(broadcast_type)
+
+        if is_duplicate_tweet(message):
+            logging.warning(
+                f"Broadcast attempt {attempt + 1} skipped (duplicate): {broadcast_type} — retrying"
+            )
+            continue
+
+        media_ids = None
+        if random.random() > 0.4:
+            media_id = get_random_media_id()
+            if media_id:
+                media_ids = [media_id]
+
+        try:
+            client.create_tweet(text=message, media_ids=media_ids)
+            mark_tweet_sent(message)
+            logging.info(f"Broadcast sent: {broadcast_type}")
+            add_activity("BROADCAST", f"{broadcast_type} - {len(message)} chars")
+            return  # success — stop retrying
+        except tweepy.TweepyException as e:
+            if _is_twitter_duplicate_error(e):
+                logging.warning(
+                    f"Broadcast attempt {attempt + 1} rejected by Twitter (duplicate): "
+                    f"{broadcast_type} — retrying"
+                )
+                # Mark it so the in-memory guard catches it next time too
+                mark_tweet_sent(message)
+                continue
+            else:
+                logging.error(f"Broadcast failed: {e}")
+                add_activity("ERROR", f"Broadcast failed: {str(e)}")
+                return  # non-duplicate error; don't retry
+
+    logging.warning("All broadcast attempts exhausted — no unique message found this cycle")
 
 def overseer_respond():
     """Respond to mentions with personality-driven responses."""
