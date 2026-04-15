@@ -1379,8 +1379,10 @@ CHAIN_IDS = {
 
 def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     """
-    Basic token safety check
-    
+    Basic token safety check using the honeypot.is API.
+    Checks for honeypot status and high buy/sell taxes.
+    Results are cached for 1 hour per token address + chain pair.
+
     Returns dict with:
         - is_safe: bool
         - risk_score: 0-100 (higher = more risky)
