@@ -14,7 +14,6 @@ import ccxt
 import re
 import threading
 import api_client
-import scalper
 
 # Wallet integrations (optional imports)
 WALLET_ENABLED = False
@@ -96,7 +95,7 @@ if ADMIN_PASSWORD == 'vault77secure':
     logging.warning("⚠️  Generate secure password: openssl rand -base64 32")
     logging.warning("="*60)
 
-# Webhook API key for external services (like Token-scalper)
+# Webhook API key for external services
 WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required
 
 # ------------------------------------------------------------
@@ -192,7 +191,7 @@ if TWITTER_ENABLED:
             logging.warning(f"⚠️  Twitter read access check failed: {e}")
 
 # ------------------------------------------------------------
-# TOKEN SCALPER MODULE - PRICE MONITORING
+# PRICE MONITORING
 # ------------------------------------------------------------
 PRICE_CACHE_FILE = "price_cache.json"
 
@@ -608,30 +607,6 @@ def overseer_event():
     event = request.json
     overseer_event_bridge(event)
     return {"ok": True}
-
-@app.route("/token-scalper-alert", methods=["POST"])
-def token_scalper_alert():
-    """Webhook endpoint for Token-scalper bot alerts"""
-    if not verify_webhook_auth():
-        return {"ok": False, "error": "Unauthorized"}, 401
-
-    try:
-        alert_data = request.json
-        alert_type = alert_data.get('type', 'unknown')
-
-        if alert_type == 'rug_pull':
-            handle_rug_pull_alert(alert_data)
-        elif alert_type == 'high_potential':
-            handle_high_potential_alert(alert_data)
-        elif alert_type == 'airdrop':
-            handle_airdrop_alert(alert_data)
-        else:
-            logging.warning(f"Unknown alert type: {alert_type}")
-
-        return {"ok": True, "processed": True}
-    except Exception as e:
-        logging.error(f"Token scalper alert failed: {e}")
-        return {"ok": False, "error": str(e)}, 500
 
 # ------------------------------------------------------------
 # MONITORING UI ROUTES
@@ -1084,7 +1059,7 @@ def monitoring_dashboard():
                         <li>Set ENABLE_WALLET_UI=true</li>
                         <li>Restart the application</li>
                     </ol>
-                    <p>See TOKEN_SCALPER_SETUP.md for detailed wallet configuration instructions.</p>
+                    <p>See the setup guide for detailed wallet configuration instructions.</p>
                 </div>
                 {% endif %}
             </div>
@@ -1146,7 +1121,6 @@ def monitoring_dashboard():
                         <li><a href="/api/jobs">/api/jobs</a> - Scheduler jobs JSON</li>
                         <li><a href="/api/activities">/api/activities</a> - Recent activities JSON</li>
                         <li><a href="/api/alerts">/api/alerts</a> - Recent alerts JSON</li>
-                        <li><a href="/api/scalper-events">/api/scalper-events</a> - Token-scalper events only</li>
                     </ul>
                     
                     <h3>Wallet APIs:</h3>
@@ -1159,7 +1133,6 @@ def monitoring_dashboard():
                     <h3>Webhooks:</h3>
                     <ul>
                         <li>POST /overseer-event - Webhook for game events</li>
-                        <li>POST /token-scalper-alert - Webhook for Token-scalper alerts</li>
                     </ul>
                     
                     <h3>Authentication:</h3>
@@ -1204,7 +1177,6 @@ def api_status():
         "start_time": BOT_START_TIME.isoformat(),
         "scheduler_running": scheduler.running if scheduler else False,
         "jobs_count": len(scheduler.get_jobs()) if scheduler else 0,
-        "scalper": scalper.get_status(),
     }
 
 @app.route("/api/prices")
@@ -1280,17 +1252,6 @@ def api_health():
         for svc, info in raw_health.items()
     }
     return jsonify(sanitized)
-
-@app.route("/api/scalper-events")
-@auth.login_required
-def api_scalper_events():
-    """JSON endpoint filtered to Token-scalper events only (for overseer-bot-ui)."""
-    with RECENT_ACTIVITIES_LOCK:
-        scalper_events = [
-            a for a in reversed(RECENT_ACTIVITIES)
-            if a.get('type') == 'SCALPER_ALERT'
-        ]
-    return {"events": scalper_events, "count": len(scalper_events)}
 
 # ------------------------------------------------------------
 # WALLET API ROUTES (Optional - requires wallet configuration)
@@ -1418,8 +1379,10 @@ CHAIN_IDS = {
 
 def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
     """
-    Basic token safety check (simplified version of Token-scalper's safety_checker)
-    
+    Basic token safety check using the honeypot.is API.
+    Checks for honeypot status and high buy/sell taxes.
+    Results are cached for 1 hour per token address + chain pair.
+
     Returns dict with:
         - is_safe: bool
         - risk_score: 0-100 (higher = more risky)
@@ -1489,175 +1452,6 @@ def check_token_safety(token_address: str, chain: str = 'eth') -> dict:
         }
     
     return result
-
-def handle_rug_pull_alert(alert_data: dict):
-    """Handle rug pull alert from Token-scalper"""
-    if not TWITTER_ENABLED or not client:
-        logging.debug("Skipping rug pull alert - Twitter not enabled")
-        return
-    
-    token_name = alert_data.get('token_name', 'Unknown Token')
-    token_address = alert_data.get('token_address', 'N/A')
-    severity = alert_data.get('severity', 'medium')
-    details = alert_data.get('details', 'Suspicious activity detected')
-    
-    emoji_map = {
-        'low': '⚠️',
-        'medium': '🚨',
-        'high': '🔴',
-        'critical': '🛑'
-    }
-    emoji = emoji_map.get(severity, '⚠️')
-    
-    personality = random.choice([
-        "The wasteland claims another scam.",
-        "Vault-Tec Market Surveillance detected suspicious activity.",
-        "FizzCo Intelligence: Threat confirmed.",
-        "Overseer protocols: Avoid this contamination.",
-        "The caps aren't worth the radiation here."
-    ])
-    
-    # Better address truncation: show start and end
-    address_display = f"{token_address[:6]}...{token_address[-4:]}" if len(token_address) > 10 else token_address
-    
-    message = (
-        f"{emoji} RUG PULL WARNING {emoji}\n\n"
-        f"Token: {token_name}\n"
-        f"Contract: {address_display}\n"
-        f"Severity: {severity.upper()}\n\n"
-        f"{details}\n\n"
-        f"{personality}\n\n"
-        f"#RugPull #CryptoScam #StaySafe\n\n"
-        f"🎮 {GAME_LINK}"
-    )
-    
-    try:
-        if len(message) > TWITTER_CHAR_LIMIT:
-            message = (
-                f"{emoji} RUG PULL WARNING {emoji}\n\n"
-                f"{token_name}: {details[:80]}...\n\n"
-                f"{personality}\n\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
-        
-        if is_duplicate_tweet(message):
-            logging.debug(f"Skipping duplicate rug pull alert for {token_name}")
-            return
-        client.create_tweet(text=message)
-        mark_tweet_sent(message)
-        logging.info(f"Posted rug pull alert for {token_name}")
-        add_activity("SCALPER_ALERT", f"Rug pull: {token_name} ({severity.upper()})")
-    except tweepy.TweepyException as e:
-        if _is_twitter_duplicate_error(e):
-            logging.warning(f"Rug pull alert skipped (duplicate content): {token_name}")
-        else:
-            logging.error(f"Failed to post rug pull alert: {e}")
-            add_activity("ERROR", f"Rug pull alert failed for {token_name}: {str(e)}")
-
-def handle_high_potential_alert(alert_data: dict):
-    """Handle high potential token alert from Token-scalper"""
-    if not TWITTER_ENABLED or not client:
-        logging.debug("Skipping high potential alert - Twitter not enabled")
-        return
-    
-    token_name = alert_data.get('token_name', 'Unknown Token')
-    score = alert_data.get('opportunity_score', 0)
-    reasons = alert_data.get('reasons', [])
-    
-    personality = random.choice([
-        "Opportunity detected in the wasteland.",
-        "FizzCo Analytics: Potential moonshot identified.",
-        "Vault-Tec recommends: Investigation warranted.",
-        "The Overseer sees potential here.",
-        "Caps flow toward opportunity."
-    ])
-    
-    reasons_str = ' • '.join(reasons[:3]) if reasons else 'Multiple positive indicators'
-    
-    message = (
-        f"🚀 HIGH POTENTIAL TOKEN 🚀\n\n"
-        f"Token: {token_name}\n"
-        f"Score: {score}/100\n"
-        f"Signals: {reasons_str}\n\n"
-        f"{personality}\n\n"
-        f"DYOR • Not Financial Advice\n\n"
-        f"🎮 {GAME_LINK}"
-    )
-    
-    try:
-        if len(message) > TWITTER_CHAR_LIMIT:
-            message = (
-                f"🚀 {token_name} - Score: {score}/100\n\n"
-                f"{personality}\n\n"
-                f"DYOR • NFA\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
-        
-        if is_duplicate_tweet(message):
-            logging.debug(f"Skipping duplicate high potential alert for {token_name}")
-            return
-        client.create_tweet(text=message)
-        mark_tweet_sent(message)
-        logging.info(f"Posted high potential alert for {token_name}")
-        add_activity("SCALPER_ALERT", f"High potential: {token_name} (score {score}/100)")
-    except tweepy.TweepyException as e:
-        if _is_twitter_duplicate_error(e):
-            logging.warning(f"High potential alert skipped (duplicate content): {token_name}")
-        else:
-            logging.error(f"Failed to post high potential alert: {e}")
-            add_activity("ERROR", f"High potential alert failed for {token_name}: {str(e)}")
-
-def handle_airdrop_alert(alert_data: dict):
-    """Handle airdrop opportunity alert"""
-    if not TWITTER_ENABLED or not client:
-        logging.debug("Skipping airdrop alert - Twitter not enabled")
-        return
-    
-    airdrop_name = alert_data.get('name', 'Unknown Airdrop')
-    website = alert_data.get('website', '')
-    value_estimate = alert_data.get('value_estimate', 'TBD')
-    
-    personality = random.choice([
-        "Free caps detected. The wasteland provides.",
-        "Vault-Tec Airdrop Alert: Opportunity incoming.",
-        "FizzCo Intelligence: Legitimate airdrop found.",
-        "The Overseer approves this distribution.",
-        "Claim your share of the wasteland economy."
-    ])
-    
-    message = (
-        f"🎁 AIRDROP OPPORTUNITY 🎁\n\n"
-        f"Project: {airdrop_name}\n"
-        f"Est. Value: {value_estimate}\n"
-        f"Link: {website}\n\n"
-        f"{personality}\n\n"
-        f"Verify legitimacy • DYOR\n\n"
-        f"🎮 {GAME_LINK}"
-    )
-    
-    try:
-        if len(message) > TWITTER_CHAR_LIMIT:
-            message = (
-                f"🎁 {airdrop_name}\n"
-                f"Value: {value_estimate}\n\n"
-                f"{personality}\n\n"
-                f"{website}\n"
-                f"{GAME_LINK}"
-            )[:TWITTER_CHAR_LIMIT]
-        
-        if is_duplicate_tweet(message):
-            logging.debug(f"Skipping duplicate airdrop alert for {airdrop_name}")
-            return
-        client.create_tweet(text=message)
-        mark_tweet_sent(message)
-        logging.info(f"Posted airdrop alert for {airdrop_name}")
-        add_activity("SCALPER_ALERT", f"Airdrop: {airdrop_name} (~{value_estimate})")
-    except tweepy.TweepyException as e:
-        if _is_twitter_duplicate_error(e):
-            logging.warning(f"Airdrop alert skipped (duplicate content): {airdrop_name}")
-        else:
-            logging.error(f"Failed to post airdrop alert: {e}")
-            add_activity("ERROR", f"Airdrop alert failed for {airdrop_name}: {str(e)}")
 
 # ------------------------------------------------------------
 # TWEET DEDUPLICATION & RATE-LIMITING STATE
@@ -3057,16 +2851,6 @@ def initialize_bot():
     api_client.start_polling()
     logging.info("External API polling started")
     add_activity("STARTUP", "External API polling started")
-
-    # Start on-chain token scalper (new token discovery + rug-pull monitoring)
-    scalper.start(
-        on_rug_pull=handle_rug_pull_alert,
-        on_high_potential=handle_high_potential_alert,
-        on_airdrop=handle_airdrop_alert,
-    )
-    if scalper.ENABLE_SCALPER:
-        logging.info("Token scalper started")
-        add_activity("STARTUP", "Token scalper started")
 
     logging.info(f"Flask app initialized. Ready to serve on port {os.getenv('PORT', 5000)}")
     add_activity("STARTUP", f"Monitoring UI ready at port {os.getenv('PORT', 5000)}")
