@@ -462,6 +462,39 @@ cat .env | grep -E "CONSUMER|ACCESS|BEARER"
 python -c "import tweepy; print(tweepy.Client(bearer_token='YOUR_TOKEN').get_me())"
 ```
 
+#### Issue: `.env` looks correct but Twitter still doesn't work
+
+**Symptoms:**
+- Bot starts, but does not tweet/reply/retweet
+- Logs show `Forbidden`, `403`, or write-only/read-access warnings
+
+**Solution Checklist:**
+1. Confirm all required variables are loaded (not just present in file):
+   ```bash
+   cat .env | grep -E "CONSUMER_KEY|CONSUMER_SECRET|ACCESS_TOKEN|ACCESS_SECRET|BEARER_TOKEN"
+   ```
+
+2. Verify X app permissions in Developer Portal:
+   - App permissions must be **Read and write**
+   - If you changed permissions, **regenerate Access Token + Access Token Secret**
+   - Replace old values in `.env` (`ACCESS_TOKEN`, `ACCESS_SECRET`)
+
+3. Check runtime logs:
+   ```bash
+   grep -E "Twitter clients initialized|write-only mode|Failed to initialize Twitter|Forbidden|403" overseer_ai.log
+   ```
+
+4. Understand tier limitations:
+   - Free tier can post tweets (write) but cannot use read endpoints (mentions/search)
+   - Mention replies and retweet hunting need Basic/Pro tier
+
+5. Restart after any env/portal changes:
+   ```bash
+   # Bot reads env at startup only
+   # Restart process/service after changes
+   python overseer_bot.py
+   ```
+
 #### Issue: Changes not taking effect
 
 **Symptoms:**
