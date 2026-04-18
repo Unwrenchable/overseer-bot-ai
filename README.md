@@ -373,8 +373,11 @@ curl -X POST http://localhost:5000/token-scalper-alert \
 
 **Bot not tweeting?**
 - Verify all 5 Twitter API credentials in `.env`
+- Ensure there are no quotes or spaces around `=` in `.env` values
 - Check `overseer_ai.log` for authentication errors
-- Ensure Twitter account has proper permissions
+- In the X Developer Portal, set app permissions to **Read and write**
+- If you changed app permissions, **regenerate `ACCESS_TOKEN` and `ACCESS_SECRET`** and update `.env`
+- Restart the bot/service after updating credentials
 
 **Dashboard not accessible?**
 - Check `PORT` environment variable (default: 5000)
@@ -388,7 +391,8 @@ curl -X POST http://localhost:5000/token-scalper-alert \
 
 **Mentions not responding?**
 - Verify `BEARER_TOKEN` is valid
-- Check Twitter API rate limits
+- Check logs for `Free tier — write-only mode` warnings
+- Free tier can post but cannot read mentions/search; upgrade to Basic tier for mention replies and retweet hunt
 - Ensure bot account is not suspended
 
 See [Complete Troubleshooting Guide](./DOCUMENTATION.md#-troubleshooting)
