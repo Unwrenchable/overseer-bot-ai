@@ -46,3 +46,4 @@ price_alerts.json
 # Media folder (keep folder but ignore contents)
 media/*
 !media/.gitkeep
+.env.backup*
