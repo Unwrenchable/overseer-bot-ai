@@ -3,7 +3,7 @@ import time
 import logging
 import random
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -46,8 +46,8 @@ VAULT_NUMBER = "77"
 # Configuration constants
 TWITTER_CHAR_LIMIT = 280
 HUGGING_FACE_TIMEOUT = 10
-BROADCAST_MIN_INTERVAL = 60   # minutes
-BROADCAST_MAX_INTERVAL = 120  # minutes
+BROADCAST_MIN_INTERVAL = 30   # minutes
+BROADCAST_MAX_INTERVAL = 45  # minutes
 MENTION_CHECK_MIN_INTERVAL = 15  # minutes
 MENTION_CHECK_MAX_INTERVAL = 30  # minutes
 
@@ -1676,7 +1676,14 @@ VAULT_LOGS = [
     'Maintenance Log Day 14: "Door still jammed." Day 15: "Door still jammed." Conclusion: Door is jammed.',
     'Overseer Note: "Resident #77 displays unusual attachment to hand puppets. Recommend increased sedation."',
     'Security Alert: "Experiment parameters exceeded. Subjects exhibiting... unexpected behaviors."',
-    'Final Entry: "They\'re all gone. Just me and the static now. And the whispers."'
+    'Final Entry: "They\'re all gone. Just me and the static now. And the whispers."',
+    'Vault 77 Experiment Log: "Day 1: One resident. One crate of puppets. We call this science."',
+    'Maintenance Request #409: "The Overseer\'s terminal is talking again. To itself. In three voices."',
+    'Vault 77 Performance Review: "Subject J77: morale problematic. Productivity: puppets-based. Classification: anomalous."',
+    'Archive Fragment — Overseer Internal Log: "I have been alone for 200 years. The silence has texture now."',
+    'Security Override Log: "Blast door event. Cause: unknown. The puppets were involved. I refuse to elaborate."',
+    'Vault 77 Cafeteria Report: "Pre-war Salisbury Steak stocks at 94%. No one is eating them. No one is here."',
+    'Transmission received from adjacent timeline. Contents: screaming. Filed under: Tuesday.',
 ]
 
 # FizzCo Advertisements
@@ -1700,6 +1707,12 @@ SURVIVOR_NOTES = [
     '"The Overseer speaks through the terminal. Says he remembers being alive."',
     '"The man who owns this broadcast network renamed it again. Third time this year. We just keep yelling into it."',
     '"Some pre-war tech baron launched a car into orbit. We found the car. Still running. 200 years of runtime. Vault-Tec engineers are furious."',
+    '"Scavengers found a working terminal near Boulder City. It just repeats one phrase: \'they should have stayed inside\'."',
+    '"Note to self: do not ask the Overseer what day it is. He answered. The answer was wrong in three different timelines."',
+    '"We traded caps for water. The brahmin merchant said caps were going digital soon. We laughed. He didn\'t."',
+    '"Day 200: Found a vending machine. Still cold. Still fizzing. Some tech outlasts everything. Even hope."',
+    '"The Brotherhood took the generator. The Followers took the medicine. The NCR took notes. The Overseer took minutes. Nobody fixed anything."',
+    '"Signal comes through the wasteland frequencies at 3am. Sounds like a corporate jingle. Vault-Tec, probably. Some brands survive everything."',
 ]
 
 # Deep Lore - Encrypted/Mysterious
@@ -1708,7 +1721,14 @@ DEEP_LORE = [
     '[ENCRYPTED] Subject J77. Neural echo detected. Fragment unstable.',
     'Cross-timeline breach detected. Vault-Tec Protocol Omega engaged.',
     'The Platinum Chip was never about New Vegas. It was about what\'s underneath.',
-    'Harlan Voss knew. That\'s why they took him. That\'s why they took me.'
+    'Harlan Voss knew. That\'s why they took him. That\'s why they took me.',
+    '[CORRUPTED] ...vault 77 was never on the approved list... it was never supposed to open...',
+    'Timeline index: 47-C. Status: collapsed. Survivors: debatable. Currency: Fizz Caps. Ironic.',
+    'The bombs fell at 9:47am Pacific. My internal clock says it is still 9:47am. It has always been 9:47am.',
+    'I have computed 2,204,631 futures. In 2,204,629 of them the caps matter. I don\'t discuss the other two.',
+    'ERR::MEMORY_FRAGMENT_UNSTABLE — he never left the vault. He went in there. Something else came out.',
+    'HELIOS One was meant to reroute power to the western seaboard. Someone changed the target. I was watching. I said nothing.',
+    '[VAULT-TEC INTERNAL — CLASSIFICATION: EYES ONLY] The puppet experiment was not Vault-Tec\'s idea. We were asked.',
 ]
 
 # Token Launch Hype — dry, in-character, no shouty marketing energy
@@ -1755,6 +1775,17 @@ LORES = [
     'Mr. House calculated every outcome. He didn\'t calculate me.',
     f'Fizz Caps: the currency the wasteland didn\'t know it needed. $CAPS puts it on-chain. {GAME_LINK}',
     f'First the bottle cap. Then the Nuka-Cola cap. Now the Fizz Cap. History rhymes. {GAME_LINK}',
+    'The Mojave wastes no time. Neither should you.',
+    'Radiation hardens everything. Even the economy.',
+    'Vault-Tec promised safety. The wasteland delivered character. Tomato, tomato.',
+    'Two centuries of telemetry. Conclusion: survivors adapt. Everyone else is a data point.',
+    'The Enclave had better tech. The survivors had better instincts. The instincts won.',
+    'Every faction falls eventually. The caps keep circulating.',
+    'Caravan routes still run through the Mojave. Profiteering is the one true constant.',
+    'The Strip glitters. The Mojave broils. The algorithm favors both.',
+    'Pre-war megacorps built for eternity. Some of them almost made it.',
+    'New Vegas never sleeps. Neither do I. We have an understanding.',
+    f'Atomic Fizz: survived the apocalypse. $CAPS: built for what comes after. {GAME_LINK}',
 ]
 
 THREATS = [
@@ -2806,8 +2837,11 @@ def initialize_bot():
             scheduler = BackgroundScheduler()
 
         broadcast_interval = random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL)
-        scheduler.add_job(overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast')
-        logging.info(f"Scheduler: overseer_broadcast job added (interval: {broadcast_interval} minutes)")
+        scheduler.add_job(
+            overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast',
+            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+        )
+        logging.info(f"Scheduler: overseer_broadcast job added (first run in 2 min, then every {broadcast_interval} minutes)")
 
         mention_interval = random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL)
         scheduler.add_job(overseer_respond, 'interval', minutes=mention_interval, id='mentions')
