@@ -1,29 +1,28 @@
 # 🔗 Integration Guide - Event Communication System
 
-This guide explains how to integrate overseer-bot-ui with overseer-bot-ai and Token-scalper for unified event communication and monitoring.
+This guide explains how to integrate overseer-bot-ui with overseer-bot-ai for unified event communication and monitoring.
 
 ## Overview
 
-The overseer-bot-ui acts as a central dashboard that aggregates alerts and status from multiple external systems:
+The overseer-bot-ui acts as a central dashboard that aggregates alerts and status from external systems:
 
 - **overseer-bot-ai**: AI-powered bot for intelligent trading decisions
-- **Token-scalper**: Automated trading bot for token opportunities
 - **overseer-bot-ui**: Central monitoring dashboard (this application)
 
 ## Architecture
 
 ```
-┌─────────────────┐         ┌──────────────────┐
-│ overseer-bot-ai │         │ Token-scalper    │
-│                 │         │                  │
-│ /api/status     │         │ /api/status      │
-│ /api/alerts     │         │                  │
-└────────┬────────┘         └────────┬─────────┘
-         │                           │
-         │  REST API (polling)       │
-         │  every 10-30s             │
-         │                           │
-         └───────────┬───────────────┘
+┌─────────────────┐
+│ overseer-bot-ai │
+│                 │
+│ /api/status     │
+│ /api/alerts     │
+└────────┬────────┘
+         │
+         │  REST API (polling)
+         │  every 10-30s
+         │
+         └───────────┬───────────────
                      ↓
          ┌─────────────────────┐
          │ overseer-bot-ui     │
@@ -144,21 +143,6 @@ Authorization: Bearer YOUR_API_KEY
 - `info` - Informational messages
 - `warning` - Warning messages
 - `critical` - Critical alerts requiring attention
-
-### Token-scalper
-
-The Token-scalper service should implement:
-
-#### Status Endpoint
-
-**Endpoint:** `GET /api/status`
-
-**Purpose:** Health check and current bot status
-
-**Authentication:** Bearer token (optional)
-```http
-Authorization: Bearer YOUR_API_KEY
-```
 
 **Response Format:**
 ```json
@@ -282,17 +266,6 @@ REQUEST_TIMEOUT=5       # HTTP request timeout in seconds (default: 5)
 - **Format:** Bearer token string
 - **Required:** Only if overseer-bot-ai requires authentication
 
-#### `TOKEN_SCALPER_URL`
-- **Description:** Base URL of the Token-scalper service
-- **Format:** Full URL including protocol (http/https)
-- **Example:** `https://token-scalper.onrender.com`
-- **Required:** No (feature disabled if not set)
-
-#### `TOKEN_SCALPER_API_KEY`
-- **Description:** API key for authenticating with Token-scalper
-- **Format:** Bearer token string
-- **Required:** Only if Token-scalper requires authentication
-
 #### `POLL_INTERVAL`
 - **Description:** How often to poll external APIs (in seconds)
 - **Default:** 15 seconds
@@ -353,15 +326,13 @@ REQUEST_TIMEOUT=5       # HTTP request timeout in seconds (default: 5)
    ```
    OVERSEER_BOT_AI_URL=https://your-overseer-ai.onrender.com
    OVERSEER_BOT_AI_API_KEY=your_production_api_key
-   TOKEN_SCALPER_URL=https://your-token-scalper.onrender.com
-   TOKEN_SCALPER_API_KEY=your_production_api_key
    POLL_INTERVAL=20
    ```
 
 3. **Deploy** and verify logs show:
    ```
    Flask monitoring UI started on port 5000
-   External API polling started for overseer-bot-ai and token-scalper
+   External API polling started for overseer-bot-ai
    ```
 
 #### Using Heroku
@@ -375,8 +346,6 @@ REQUEST_TIMEOUT=5       # HTTP request timeout in seconds (default: 5)
    ```bash
    heroku config:set OVERSEER_BOT_AI_URL=https://your-overseer-ai.herokuapp.com
    heroku config:set OVERSEER_BOT_AI_API_KEY=your_api_key
-   heroku config:set TOKEN_SCALPER_URL=https://your-token-scalper.herokuapp.com
-   heroku config:set TOKEN_SCALPER_API_KEY=your_api_key
    heroku config:set POLL_INTERVAL=20
    ```
 
