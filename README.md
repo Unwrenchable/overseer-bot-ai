@@ -321,18 +321,27 @@ Access the dashboard at `http://localhost:5000/`:
 All endpoints require HTTP Basic Auth:
 
 ```bash
-# Get bot status
-curl -u admin:password http://localhost:5000/api/status
-
-# Get current prices
-curl -u admin:password http://localhost:5000/api/prices
-
-# Get scheduler jobs
-curl -u admin:password http://localhost:5000/api/jobs
-
-# Get recent activities
-curl -u admin:password http://localhost:5000/api/activities
+# Example
+curl -u admin:your_password https://your-domain.com/api/status
 ```
+
+#### Monitoring APIs
+- `GET /api/status` - Bot status JSON (uptime, version, Twitter enabled, etc.)
+- `GET /api/prices` - Current token prices JSON
+- `GET /api/jobs` - Scheduler jobs JSON (next run times, intervals)
+- `GET /api/activities` - Recent activities JSON (last 50 bot actions)
+- `GET /api/alerts` - Recent alerts JSON (price alerts, errors)
+
+#### Wallet APIs
+- `GET /api/wallet/status` - Wallet balances (Solana, ETH, BSC)
+- `POST /api/wallet/check-token` - Token safety analysis (JSON payload with token address)
+- `POST /api/price/check` - Manual price check (JSON payload with symbol)
+
+#### Webhooks
+- `POST /overseer-event` - Game event webhook (requires `WEBHOOK_API_KEY` header)
+
+#### Health Check
+- `GET /health` - Health check endpoint (no auth required)
 
 ## 🤝 Webhook Integration
 
