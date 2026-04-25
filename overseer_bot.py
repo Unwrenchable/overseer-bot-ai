@@ -5,10 +5,20 @@ import random
 import hashlib
 from datetime import datetime, timedelta, timezone
 import json
+
+# Load .env file (if present) before any os.getenv() calls.
+# This is a no-op in production when env-vars are already injected by the
+# host (e.g. Render.com), so it is always safe to call unconditionally.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely solely on environment variables
+
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
-from flask import Flask, request, jsonify
+from flask import Flask, make_response, request, jsonify
 from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
@@ -628,10 +638,25 @@ def add_activity(activity_type, description):
         if len(RECENT_ACTIVITIES) > 50:
             RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
 
+@app.route("/", methods=["HEAD"])
+def root_head():
+    """HEAD / handler — used by Render.com and other uptime monitors.
+
+    Returns HTTP 200 without requiring authentication.  HEAD responses carry
+    no body, so no dashboard content or sensitive data is exposed.  This is
+    intentionally asymmetric with GET / (which requires Basic Auth) — it only
+    signals that the process is alive, not that the caller is authorised to
+    view the dashboard.
+
+    The canonical health-check path is /health; this is a safety-net fallback
+    for probes that target the root path.
+    """
+    return make_response("", 200)
+
 @app.route("/")
 @auth.login_required
 def monitoring_dashboard():
-    """Main monitoring dashboard"""
+    """Main monitoring dashboard (GET only; requires HTTP Basic Auth)"""
     from flask import render_template_string
     
     # Calculate uptime
