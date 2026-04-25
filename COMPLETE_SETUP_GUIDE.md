@@ -20,8 +20,8 @@ This guide walks you through setting up the Overseer Bot with full wallet functi
 ### Step 1: Clone and Install
 
 ```bash
-git clone https://github.com/atomicfizzcaps/overseer-bot-ui.git
-cd overseer-bot-ui
+git clone https://github.com/atomicfizzcaps/overseer-bot-ai.git
+cd overseer-bot-ai
 pip install -r requirements.txt
 ```
 
