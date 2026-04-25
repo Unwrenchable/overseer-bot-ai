@@ -20,6 +20,7 @@ services:
     env: python
     plan: starter
     region: oregon
+    healthCheckPath: /health
     buildCommand: pip install -r requirements-lock.txt
     startCommand: gunicorn --config gunicorn_config.py overseer_bot:app
     envVars:
