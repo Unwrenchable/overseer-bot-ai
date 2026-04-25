@@ -61,7 +61,7 @@ services:
       - key: ETH_PRIVATE_KEY
         sync: false  # CRITICAL: NEVER commit private keys!
       - key: ETH_RPC_ENDPOINT
-        value: "https://eth.public-rpc.com"
+        value: "https://ethereum.publicnodecnode.com"
       - key: BSC_RPC_ENDPOINT
         value: "https://bsc-dataseed1.binance.org"
 

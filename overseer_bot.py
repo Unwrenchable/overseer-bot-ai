@@ -119,8 +119,39 @@ SOLANA_RPC_ENDPOINT = os.getenv('SOLANA_RPC_ENDPOINT', 'https://api.mainnet-beta
 
 # Ethereum/BSC configuration
 ETH_PRIVATE_KEY = os.getenv('ETH_PRIVATE_KEY', '')
-ETH_RPC_ENDPOINT = os.getenv('ETH_RPC_ENDPOINT', 'https://eth.public-rpc.com')
+ETH_RPC_ENDPOINT = os.getenv('ETH_RPC_ENDPOINT', 'https://ethereum.publicnode.com')  # Updated default
 BSC_RPC_ENDPOINT = os.getenv('BSC_RPC_ENDPOINT', 'https://bsc-dataseed1.binance.org')
+
+# Reliable free RPC endpoints for fallback
+ETH_RPC_URLS = [
+    "https://ethereum.publicnode.com",
+    "https://rpc.ankr.com/eth", 
+    "https://eth.llamarpc.com",
+    "https://1rpc.io/eth",
+    "https://cloudflare-eth.com"
+]
+
+BSC_RPC_URLS = [
+    "https://bsc-dataseed1.binance.org",
+    "https://bsc-dataseed2.binance.org",
+    "https://bsc-dataseed3.binance.org",
+    "https://rpc.ankr.com/bsc"
+]
+
+def get_web3_connection(rpc_urls, chain_name="ETH"):
+    """Get a working Web3 connection with fallback to multiple RPCs."""
+    import random
+    for attempt in range(3):  # retry up to 3 times
+        url = random.choice(rpc_urls)
+        try:
+            w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 10}))
+            if w3.is_connected():
+                logging.info(f"✅ Connected to {chain_name} RPC: {url}")
+                return w3
+        except Exception as e:
+            logging.warning(f"Failed to connect to {chain_name} RPC {url}: {e}")
+            continue
+    raise Exception(f"All {chain_name} RPCs failed after 3 attempts")
 
 # Initialize wallet clients if enabled and credentials provided
 solana_client = None
@@ -141,11 +172,16 @@ if WALLET_ENABLED and ENABLE_WALLET_UI:
             logging.info(f"✅ Solana wallet initialized: {wallet_address[:8]}...{wallet_address[-8:]}")
         
         if ETH_PRIVATE_KEY:
-            eth_w3 = Web3(Web3.HTTPProvider(ETH_RPC_ENDPOINT))
-            bsc_w3 = Web3(Web3.HTTPProvider(BSC_RPC_ENDPOINT))
-            eth_account = eth_w3.eth.account.from_key(ETH_PRIVATE_KEY)
-            eth_wallet_address = eth_account.address
-            logging.info(f"✅ ETH/BSC wallet initialized: {eth_wallet_address[:8]}...{eth_wallet_address[-8:]}")
+            try:
+                eth_w3 = get_web3_connection(ETH_RPC_URLS, "ETH")
+                bsc_w3 = get_web3_connection(BSC_RPC_URLS, "BSC")
+                eth_account = eth_w3.eth.account.from_key(ETH_PRIVATE_KEY)
+                eth_wallet_address = eth_account.address
+                logging.info(f"✅ ETH/BSC wallet initialized: {eth_wallet_address[:8]}...{eth_wallet_address[-8:]}")
+            except Exception as e:
+                logging.error(f"Failed to connect to ETH/BSC RPCs: {e}")
+                eth_w3 = None
+                bsc_w3 = None
     except Exception as e:
         logging.error(f"Failed to initialize wallet: {e}")
         WALLET_ENABLED = False
@@ -606,7 +642,7 @@ def verify_webhook_auth():
 @app.route("/health")
 def health_check():
     """Health check endpoint for monitoring services (no auth required)"""
-    return {"status": "ok", "service": "overseer-bot", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "service": "overseer-bot-ai"}
 
 @app.route("/overseer-event", methods=["POST"])
 def overseer_event():
