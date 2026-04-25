@@ -18,7 +18,7 @@ except ImportError:
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
-from flask import Flask, make_response, request, jsonify
+from flask import Flask, request, jsonify
 from flask_httpauth import HTTPBasicAuth
 import ccxt
 import re
@@ -638,25 +638,10 @@ def add_activity(activity_type, description):
         if len(RECENT_ACTIVITIES) > 50:
             RECENT_ACTIVITIES = RECENT_ACTIVITIES[-50:]
 
-@app.route("/", methods=["HEAD"])
-def root_head():
-    """HEAD / handler — used by Render.com and other uptime monitors.
-
-    Returns HTTP 200 without requiring authentication.  HEAD responses carry
-    no body, so no dashboard content or sensitive data is exposed.  This is
-    intentionally asymmetric with GET / (which requires Basic Auth) — it only
-    signals that the process is alive, not that the caller is authorised to
-    view the dashboard.
-
-    The canonical health-check path is /health; this is a safety-net fallback
-    for probes that target the root path.
-    """
-    return make_response("", 200)
-
 @app.route("/")
 @auth.login_required
 def monitoring_dashboard():
-    """Main monitoring dashboard (GET only; requires HTTP Basic Auth)"""
+    """Main monitoring dashboard"""
     from flask import render_template_string
     
     # Calculate uptime
