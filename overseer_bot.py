@@ -5,6 +5,16 @@ import random
 import hashlib
 from datetime import datetime, timedelta, timezone
 import json
+
+# Load .env file (if present) before any os.getenv() calls.
+# This is a no-op in production when env-vars are already injected by the
+# host (e.g. Render.com), so it is always safe to call unconditionally.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely solely on environment variables
+
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
