@@ -141,17 +141,37 @@ BSC_RPC_URLS = [
 def get_web3_connection(rpc_urls, chain_name="ETH"):
     """Get a working Web3 connection with fallback to multiple RPCs."""
     import random
-    for attempt in range(3):  # retry up to 3 times
-        url = random.choice(rpc_urls)
+    
+    # Try each URL once in random order
+    shuffled_urls = rpc_urls[:]
+    random.shuffle(shuffled_urls)
+    
+    for url in shuffled_urls:
         try:
             w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 10}))
             if w3.is_connected():
+                # Test the connection with a simple call
+                w3.eth.block_number
                 logging.info(f"✅ Connected to {chain_name} RPC: {url}")
                 return w3
         except Exception as e:
             logging.warning(f"Failed to connect to {chain_name} RPC {url}: {e}")
             continue
-    raise Exception(f"All {chain_name} RPCs failed after 3 attempts")
+    
+    # If all URLs failed, try one more round with different random order
+    random.shuffle(shuffled_urls)
+    for url in shuffled_urls:
+        try:
+            w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 15}))  # Longer timeout
+            if w3.is_connected():
+                w3.eth.block_number
+                logging.info(f"✅ Connected to {chain_name} RPC (retry): {url}")
+                return w3
+        except Exception as e:
+            logging.warning(f"Failed to connect to {chain_name} RPC {url} (retry): {e}")
+            continue
+    
+    raise Exception(f"All {chain_name} RPCs failed after 2 rounds")
 
 # Initialize wallet clients if enabled and credentials provided
 solana_client = None
@@ -642,7 +662,8 @@ def verify_webhook_auth():
 @app.route("/health")
 def health_check():
     """Health check endpoint for monitoring services (no auth required)"""
-    return {"status": "healthy", "service": "overseer-bot-ai"}
+    from flask import jsonify
+    return jsonify({"status": "healthy", "service": "overseer-bot-ai"}), 200
 
 @app.route("/overseer-event", methods=["POST"])
 def overseer_event():
