@@ -22,6 +22,7 @@ services:
     region: oregon
     buildCommand: pip install -r requirements-lock.txt
     startCommand: gunicorn --config gunicorn_config.py overseer_bot:app
+    healthCheckPath: /health
     envVars:
       # Twitter API Credentials - MUST be set in Render dashboard
       - key: CONSUMER_KEY
