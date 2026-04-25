@@ -5,6 +5,7 @@ Use this checklist to ensure secure deployment of the Overseer Bot AI with authe
 ## ⚠️ Security First: About .env Files
 
 **CRITICAL:** Before you start:
+
 - The `.env.example` file in the repository is a **TEMPLATE** (committed to Git)
 - `.env.example` contains NO actual secrets, only placeholders
 - NEVER put actual secrets in `.env.example`
@@ -14,21 +15,25 @@ Use this checklist to ensure secure deployment of the Overseer Bot AI with authe
 
 - [ ] Copy `.env.example` to `.env` (create your own copy)
 - [ ] Generate strong credentials:
+
   ```bash
   openssl rand -base64 32  # For ADMIN_PASSWORD
   openssl rand -hex 32     # For WEBHOOK_API_KEY
   ```
+
 - [ ] Fill in all required environment variables in YOUR `.env` file (not .env.example!)
 - [ ] Verify `.env` is in `.gitignore` (it is!)
 - [ ] Test locally:
+
   ```bash
   # Development mode (Flask dev server)
   python overseer_bot.py
-  
+
   # OR Production mode locally (Gunicorn)
   gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 overseer_bot:app
   # Should see security warning if using default password
   ```
+
 - [ ] Test dashboard access (should require login)
 - [ ] Test API endpoints (should require auth)
 - [ ] Test webhooks (should require API key if configured)
@@ -41,19 +46,22 @@ Use this checklist to ensure secure deployment of the Overseer Bot AI with authe
 Set these on your hosting platform (Render, Heroku, etc.):
 
 #### Required
+
 - [ ] `CONSUMER_KEY` - Twitter API
 - [ ] `CONSUMER_SECRET` - Twitter API
 - [ ] `ACCESS_TOKEN` - Twitter API
-- [ ] `ACCESS_SECRET` - Twitter API  
+- [ ] `ACCESS_SECRET` - Twitter API
 - [ ] `BEARER_TOKEN` - Twitter API
 - [ ] `ADMIN_USERNAME` - Dashboard login (change from 'admin')
 - [ ] `ADMIN_PASSWORD` - Dashboard password (use generated strong password)
 
 #### Recommended
+
 - [ ] `WEBHOOK_API_KEY` - For securing webhooks (highly recommended)
 - [ ] `PORT` - Default 5000 (optional)
 
 #### Optional
+
 - [ ] `HUGGING_FACE_TOKEN` - For AI features
 
 ### Step 2: Verify Configuration
@@ -94,6 +102,7 @@ Set these on your hosting platform (Render, Heroku, etc.):
 If using Token-scalper bot:
 
 - [ ] Update Token-scalper's `config.json`:
+
   ```json
   {
     "social_media": {
@@ -103,12 +112,14 @@ If using Token-scalper bot:
     }
   }
   ```
+
 - [ ] Test webhook from Token-scalper
 - [ ] Verify alerts appear in Overseer Bot logs
 
 ## Security Checks
 
 ### Critical
+
 - [ ] ✅ Using HTTPS in production
 - [ ] ✅ Not using default credentials
 - [ ] ✅ Strong password (20+ characters, mixed case, numbers, symbols)
@@ -116,12 +127,14 @@ If using Token-scalper bot:
 - [ ] ✅ `.env` file is in `.gitignore` (never committed)
 
 ### Important
+
 - [ ] ✅ Credentials stored in secure password manager
 - [ ] ✅ Only authorized IPs can access dashboard (via firewall)
 - [ ] ✅ Monitoring/logging enabled for security events
 - [ ] ✅ Regular credential rotation scheduled (every 90 days)
 
-### Recommended
+### Recommended Security Measures
+
 - [ ] ✅ Rate limiting on authentication endpoints
 - [ ] ✅ Automated alerts for repeated failed logins
 - [ ] ✅ Backup of environment variables in secure location
@@ -130,21 +143,25 @@ If using Token-scalper bot:
 ## Troubleshooting
 
 ### Dashboard not accessible
+
 - Check firewall rules
 - Verify port is correct (default 5000)
 - Check logs for startup errors
 
 ### Getting 401 Unauthorized
+
 - Verify credentials are correct
 - Check environment variables are set properly
 - Try password without special shell characters first
 
 ### Webhooks failing with 401
+
 - Verify `WEBHOOK_API_KEY` matches in both services
 - Check Authorization header format: `Bearer <key>`
 - Test with curl to isolate issue
 
 ### Binance geo-block errors
+
 - Should automatically fallback to CoinGecko
 - Check logs for "falling back to CoinGecko" message
 - If CoinGecko also fails, check network connectivity
@@ -152,16 +169,19 @@ If using Token-scalper bot:
 ## Ongoing Maintenance
 
 ### Weekly
+
 - [ ] Review access logs for suspicious activity
 - [ ] Verify bot is functioning normally
 - [ ] Check price data is being fetched
 
 ### Monthly
+
 - [ ] Review and update firewall rules if needed
 - [ ] Check for any security updates to dependencies
 - [ ] Verify backups are working
 
 ### Quarterly (Every 90 days)
+
 - [ ] Rotate credentials:
   - Generate new `ADMIN_PASSWORD`
   - Generate new `WEBHOOK_API_KEY`
@@ -172,6 +192,7 @@ If using Token-scalper bot:
 ## Emergency Procedures
 
 ### Credentials Compromised
+
 1. Immediately generate new credentials
 2. Update environment variables on hosting platform
 3. Restart service
@@ -180,6 +201,7 @@ If using Token-scalper bot:
 6. Document incident
 
 ### Dashboard Being Attacked
+
 1. Check logs for attack patterns
 2. Block attacking IPs at firewall level
 3. Consider temporarily disabling dashboard
@@ -189,6 +211,7 @@ If using Token-scalper bot:
 ## Support
 
 For issues or questions:
+
 1. Check `SECURITY_GUIDE.md` for detailed setup instructions
 2. Review `AUTHENTICATION_IMPLEMENTATION.md` for technical details
 3. Check logs: `tail -f overseer_ai.log`
