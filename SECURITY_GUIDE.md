@@ -76,10 +76,9 @@ These require username/password authentication:
 
 ### Protected with API Key
 
-These require `Authorization` header with API key:
+These require `Authorization: Bearer <key>` or `X-API-Key: <key>` header (only when `WEBHOOK_API_KEY` is set):
 
-- ✅ Webhook: `POST http://your-server:5000/overseer-event`
-- ✅ Token-scalper alerts: `POST http://your-server:5000/token-scalper-alert`
+- ✅ Game event webhook: `POST http://your-server:5000/overseer-event`
 
 ## Accessing the Dashboard
 
@@ -115,45 +114,37 @@ response = requests.get(
 print(response.json())
 ```
 
-## Webhook Integration with Token-scalper
+## Webhook Integration
 
-### Configure Token-scalper
+### Securing the Game Event Webhook
 
-Edit Token-scalper's `config.json`:
+The bot receives game events at `POST /overseer-event`. If `WEBHOOK_API_KEY` is set in your environment, all webhook requests must include the key:
 
-```json
-{
-  "social_media": {
-    "enabled": true,
-    "overseer_bot_enabled": true,
-    "overseer_webhook_url": "http://your-overseer-bot:5000/token-scalper-alert",
-    "overseer_api_key": "your_webhook_api_key_here"
-  }
-}
+```bash
+# Header formats accepted by the bot:
+X-API-Key: your_webhook_api_key
+# or
+Authorization: Bearer your_webhook_api_key
 ```
 
-**⚠️ CRITICAL:** The `overseer_api_key` in Token-scalper's config MUST match the `WEBHOOK_API_KEY` in Overseer Bot.
+Example:
 
-**How to set matching keys:**
-1. Generate one key: `openssl rand -hex 32`
-2. Use the SAME key in BOTH places:
-   - In Overseer Bot's `.env` file: `WEBHOOK_API_KEY=<your_generated_key_here>`
-   - In Token-scalper's `config.json`: `"overseer_api_key": "<your_generated_key_here>"`
-3. The keys must be identical for webhooks to work
+```bash
+curl -X POST https://your-bot.onrender.com/overseer-event \
+  -H "Authorization: Bearer your_webhook_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type":"perk","player_address":"0x123...","perk_name":"Bloody Mess"}'
+```
 
-**⚠️ IMPORTANT:** 
-- NEVER commit `config.json` with actual keys to Git
-- For cloud deployments, use environment variables instead of config files
-- Token-scalper also supports environment variables for sensitive data
+If `WEBHOOK_API_KEY` is empty, the endpoint accepts all requests (fine for local dev, **not recommended in production**).
 
 ### Test Webhook
 
 ```bash
-# Test with API key
-curl -X POST http://your-server:5000/token-scalper-alert \
+curl -X POST http://your-server:5000/overseer-event \
   -H "Authorization: Bearer your_webhook_api_key" \
   -H "Content-Type: application/json" \
-  -d '{"type":"test","message":"Test alert"}'
+  -d '{"event_type":"test","message":"Test event"}'
 ```
 
 ## Deployment Platforms
@@ -250,17 +241,15 @@ services:
 - ❌ Use the same password across environments
 - ❌ Expose the monitoring port (5000) directly to the internet without HTTPS
 
-## Backward Compatibility
+## Webhook API Key (Optional)
 
-### Webhook API Key (Optional)
-
-The `WEBHOOK_API_KEY` is optional. If not set (empty string), webhooks will work without authentication:
+The `WEBHOOK_API_KEY` is optional. If not set (empty string), the game event webhook will work without authentication:
 
 ```env
 WEBHOOK_API_KEY=
 ```
 
-This maintains backward compatibility with existing Token-scalper integrations. However, **we strongly recommend setting an API key in production**.
+This can be useful for local development or trusted internal networks. **We strongly recommend setting an API key in production**.
 
 ## Troubleshooting
 
@@ -273,12 +262,12 @@ echo $ADMIN_USERNAME
 echo $ADMIN_PASSWORD
 ```
 
-### Problem: Token-scalper webhooks failing with 401
+### Problem: Webhooks failing with 401
 
-**Solution**: Verify API keys match
-1. Check Overseer Bot's `WEBHOOK_API_KEY` in `.env`
-2. Check Token-scalper's `overseer_api_key` in `config.json`
-3. They must be identical
+**Solution**: Verify API key
+1. Check `WEBHOOK_API_KEY` in your `.env` or platform environment
+2. Ensure the sending service sends the key in the `Authorization: Bearer <key>` header
+3. Test with curl to isolate the issue
 
 ### Problem: Browser keeps asking for password
 
