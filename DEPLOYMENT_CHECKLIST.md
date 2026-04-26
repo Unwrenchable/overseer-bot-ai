@@ -95,26 +95,6 @@ Set these on your hosting platform (Render, Heroku, etc.):
 - [ ] Configure firewall rules to restrict dashboard access (if possible)
 - [ ] Set up monitoring/alerts for failed authentication attempts
 - [ ] Document credentials in secure password manager
-- [ ] Share webhook API key securely with Token-scalper admin
-
-### Step 6: Configure Token-scalper Integration
-
-If using Token-scalper bot:
-
-- [ ] Update Token-scalper's `config.json`:
-
-  ```json
-  {
-    "social_media": {
-      "overseer_bot_enabled": true,
-      "overseer_webhook_url": "https://your-overseer-bot.com/token-scalper-alert",
-      "overseer_api_key": "your_WEBHOOK_API_KEY_here"
-    }
-  }
-  ```
-
-- [ ] Test webhook from Token-scalper
-- [ ] Verify alerts appear in Overseer Bot logs
 
 ## Security Checks
 
@@ -196,9 +176,8 @@ If using Token-scalper bot:
 1. Immediately generate new credentials
 2. Update environment variables on hosting platform
 3. Restart service
-4. Update Token-scalper configuration
-5. Review access logs for unauthorized access
-6. Document incident
+4. Review access logs for unauthorized access
+5. Document incident
 
 ### Dashboard Being Attacked
 
@@ -213,9 +192,8 @@ If using Token-scalper bot:
 For issues or questions:
 
 1. Check `SECURITY_GUIDE.md` for detailed setup instructions
-2. Review `AUTHENTICATION_IMPLEMENTATION.md` for technical details
-3. Check logs: `tail -f overseer_ai.log`
-4. Open an issue on GitHub
+2. Check logs: `tail -f overseer_ai.log`
+3. Open an issue on GitHub
 
 ---
 
