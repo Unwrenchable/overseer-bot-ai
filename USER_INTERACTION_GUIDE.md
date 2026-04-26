@@ -360,11 +360,11 @@ Report issues by:
 2. Contacting the bot owner directly
 3. Checking the bot's dashboard (if you have access)
 
-### For Token-Scalper Integration
+### For Webhook / Integration
 
-If you're trying to connect the Token-scalper bot with Overseer Bot, see:
-- **TOKEN_SCALPER_SETUP.md** - Wallet configuration guide
+If you're trying to send events to the bot via webhook, see:
 - **DOCUMENTATION.md** - Webhook integration details
+- **SECURITY_GUIDE.md** - Securing the webhook endpoint
 
 ---
 
