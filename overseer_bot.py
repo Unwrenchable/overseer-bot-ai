@@ -2196,10 +2196,13 @@ def _score_response(text, max_tokens=120):
 
 
 def generate_llm_response(prompt, max_tokens=120, context=None):
-    """Generate an AI response using the unified ensemble of all available AI providers.
+    """Generate an AI response using a unified multi-AI system.
 
-    Calls OpenAI, xAI (Grok), and HuggingFace in parallel, scores each response for
-    quality, and returns the best result. Falls back gracefully if any provider fails.
+    xAI (Grok) is the PRIMARY provider — it is called first and its response is
+    returned immediately if it passes the quality threshold.  If xAI is not
+    configured or its response is unusable, the remaining providers (OpenAI and
+    HuggingFace) are called in parallel and the best-scoring result is returned.
+    All providers share the same system prompt so they speak as one voice.
     """
     import concurrent.futures
 
@@ -2211,12 +2214,20 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
         {"role": "user", "content": prompt},
     ]
 
-    # Build the list of active providers
+    # ── Primary: xAI (Grok) ──────────────────────────────────────────────────
+    if XAI_API:
+        xai_result = _generate_xai_response(messages, max_tokens)
+        xai_score = _score_response(xai_result, max_tokens)
+        logging.debug(f"AI primary — xAI-Grok: score={xai_score}, len={len(xai_result) if xai_result else 0}")
+        if xai_score > 0:
+            logging.info("AI response: xAI-Grok (primary)")
+            return xai_result
+        logging.warning("xAI (Grok) returned an unusable response — falling back to secondary providers")
+
+    # ── Fallback: parallel ensemble of remaining providers ───────────────────
     providers = []
     if OPENAI_API_KEY:
         providers.append(("OpenAI", _generate_openai_response))
-    if XAI_API:
-        providers.append(("xAI-Grok", _generate_xai_response))
     if HUGGING_FACE_TOKEN:
         providers.append(("HuggingFace", _generate_hf_chat_response))
 
@@ -2234,21 +2245,21 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
             try:
                 results[name] = future.result()
             except Exception as e:
-                logging.error(f"Ensemble provider {name} raised: {e}")
+                logging.error(f"Fallback provider {name} raised: {e}")
                 results[name] = None
 
-    # Score all responses and pick the best
+    # Score fallback responses and return the best
     best_name, best_text, best_score = None, None, 0
     for name, text in results.items():
         score = _score_response(text, max_tokens)
-        logging.debug(f"AI ensemble — {name}: score={score}, len={len(text) if text else 0}")
+        logging.debug(f"AI fallback — {name}: score={score}, len={len(text) if text else 0}")
         if score > best_score:
             best_score = score
             best_text = text
             best_name = name
 
     if best_text:
-        logging.info(f"AI ensemble winner: {best_name} (score={best_score})")
+        logging.info(f"AI fallback winner: {best_name} (score={best_score})")
         return best_text
 
     return None
