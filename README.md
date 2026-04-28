@@ -151,32 +151,45 @@ Dashboard tabs:
 Copy `.env.example` to `.env` and fill in your values. **Never commit `.env`** — it is in `.gitignore`.
 
 ```env
-# ── Twitter API (all 5 required) ──────────────────────────────────
-CONSUMER_KEY=your_consumer_key
-CONSUMER_SECRET=your_consumer_secret
+# ── Twitter / X API (all 5 required) ──────────────────────────────────────
+# Get all five from https://developer.twitter.com/ → your App → Keys and tokens
+# ⚠️  Set App permissions to "Read and Write" BEFORE generating your Access Token
+#
+# CONSUMER_KEY     = "API Key"             (identifies your App)
+# CONSUMER_SECRET  = "API Key Secret"      (App-level secret)
+# ACCESS_TOKEN     = "Access Token"        (tied to your X account, write access)
+# ACCESS_SECRET    = "Access Token Secret" (paired with ACCESS_TOKEN)
+# BEARER_TOKEN     = "Bearer Token"        (app-only read token)
+CONSUMER_KEY=your_api_key
+CONSUMER_SECRET=your_api_key_secret
 ACCESS_TOKEN=your_access_token
-ACCESS_SECRET=your_access_secret
+ACCESS_SECRET=your_access_token_secret
 BEARER_TOKEN=your_bearer_token
 
-# ── Dashboard auth (required) ─────────────────────────────────────
+# ── Dashboard auth (required) ─────────────────────────────────────────────
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=change_me_strong_password   # ⚠️ CHANGE THIS
+ADMIN_PASSWORD=change_me_strong_password   # ⚠️  CHANGE THIS
 
-# ── LLM / AI responses (at least one enables AI tweets) ───────────
-OPENAI_API_KEY=                            # optional
-XAI_API=                                   # optional
-HUGGING_FACE_TOKEN=                        # optional
+# ── AI / LLM (at least one enables AI-generated tweets) ───────────────────
+# Priority order: xAI → OpenAI → HuggingFace
+# xAI (Grok) is called first; others are only used if xAI is unavailable/fails
+XAI_API=                  # PRIMARY  — xAI (Grok) key  — https://console.x.ai/
+XAI_MODEL=grok-3-mini     # optional, default shown
+OPENAI_API_KEY=           # FALLBACK 1 — OpenAI / Groq / Together / Ollama
+LLM_MODEL=gpt-4o-mini     # optional, default shown
+HUGGING_FACE_TOKEN=       # FALLBACK 2 — free tier available
 
-# ── Wallet features (optional) ────────────────────────────────────
+# ── Wallet features (optional) ────────────────────────────────────────────
 ENABLE_WALLET_UI=true
 SOLANA_PRIVATE_KEY=                        # optional
 ETH_PRIVATE_KEY=                           # optional
 
-# ── Built-in token scanner (optional) ────────────────────────────
+# ── Built-in token scanner (optional) ────────────────────────────────────
 ENABLE_SCALPER=false
 
-# ── Other ─────────────────────────────────────────────────────────
+# ── Other ─────────────────────────────────────────────────────────────────
 WEBHOOK_API_KEY=                           # secures /overseer-event
+RENDER_EXTERNAL_URL=                       # your public URL — enables keep-alive ping
 PORT=5000
 ```
 

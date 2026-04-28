@@ -47,22 +47,36 @@ Set these on your hosting platform (Render, Heroku, etc.):
 
 #### Required
 
-- [ ] `CONSUMER_KEY` - Twitter API
-- [ ] `CONSUMER_SECRET` - Twitter API
-- [ ] `ACCESS_TOKEN` - Twitter API
-- [ ] `ACCESS_SECRET` - Twitter API
-- [ ] `BEARER_TOKEN` - Twitter API
-- [ ] `ADMIN_USERNAME` - Dashboard login (change from 'admin')
-- [ ] `ADMIN_PASSWORD` - Dashboard password (use generated strong password)
+- [ ] `CONSUMER_KEY` — Twitter "API Key" (from the App's *Keys and tokens* page)
+- [ ] `CONSUMER_SECRET` — Twitter "API Key Secret" (same page)
+- [ ] `ACCESS_TOKEN` — Twitter "Access Token" (user-level; regenerate **after** setting Read+Write permissions)
+- [ ] `ACCESS_SECRET` — Twitter "Access Token Secret" (paired with `ACCESS_TOKEN`)
+- [ ] `BEARER_TOKEN` — App-only read token (shown on *Keys and tokens* page)
+- [ ] `ADMIN_USERNAME` — Dashboard login (change from 'admin')
+- [ ] `ADMIN_PASSWORD` — Dashboard password (use generated strong password)
 
 #### Recommended
 
 - [ ] `WEBHOOK_API_KEY` - For securing webhooks (highly recommended)
 - [ ] `PORT` - Default 5000 (optional)
 
-#### Optional
+#### AI / LLM (at least one recommended for AI-generated tweets)
 
-- [ ] `HUGGING_FACE_TOKEN` - For AI features
+> The bot uses a **primary → fallback** AI chain. Set whichever keys you have;
+> the bot automatically selects the best available provider in order.
+
+| Priority | Variable | Provider | Where to get it |
+|----------|----------|----------|-----------------|
+| **Primary** | `XAI_API` | xAI (Grok) | [console.x.ai](https://console.x.ai/) |
+| | `XAI_MODEL` | *(optional)* model name | Default: `grok-3-mini` |
+| Fallback 1 | `OPENAI_API_KEY` | OpenAI / compatible | [platform.openai.com](https://platform.openai.com/api-keys) |
+| | `OPENAI_BASE_URL` | *(optional)* | Override for Groq, Together, Ollama |
+| | `LLM_MODEL` | *(optional)* | Default: `gpt-4o-mini` |
+| Fallback 2 | `HUGGING_FACE_TOKEN` | Hugging Face | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+
+- [ ] `XAI_API` — Primary AI (Grok) — **recommended if you have an xAI key**
+- [ ] `OPENAI_API_KEY` — First fallback (OpenAI or compatible)
+- [ ] `HUGGING_FACE_TOKEN` — Last-resort fallback (free tier available)
 
 ### Step 2: Verify Configuration
 
