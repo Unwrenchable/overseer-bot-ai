@@ -3,8 +3,18 @@ import time
 import logging
 import random
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
+
+# Load .env file (if present) before any os.getenv() calls.
+# This is a no-op in production when env-vars are already injected by the
+# host (e.g. Render.com), so it is always safe to call unconditionally.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely solely on environment variables
+
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import tweepy
@@ -46,10 +56,45 @@ VAULT_NUMBER = "77"
 # Configuration constants
 TWITTER_CHAR_LIMIT = 280
 HUGGING_FACE_TIMEOUT = 10
-BROADCAST_MIN_INTERVAL = 60   # minutes
-BROADCAST_MAX_INTERVAL = 120  # minutes
-MENTION_CHECK_MIN_INTERVAL = 15  # minutes
-MENTION_CHECK_MAX_INTERVAL = 30  # minutes
+BROADCAST_MIN_INTERVAL = 60   # minutes (reduced from 30-45 to save costs)
+BROADCAST_MAX_INTERVAL = 90  # minutes (reduced frequency)
+MENTION_CHECK_MIN_INTERVAL = 30  # minutes (reduced from 15-30)
+MENTION_CHECK_MAX_INTERVAL = 45  # minutes (reduced frequency)
+
+# LLM Response Cache to reduce API costs
+LLM_CACHE = {}
+LLM_CACHE_MAX_SIZE = 50
+LLM_CACHE_TTL = 3600  # 1 hour
+
+def get_cache_key(prompt, max_tokens, context=None):
+    """Generate cache key for LLM responses."""
+    key_parts = [str(prompt), str(max_tokens)]
+    if context:
+        key_parts.append(str(context))
+    return hashlib.md5('|'.join(key_parts).encode()).hexdigest()
+
+def get_cached_response(cache_key):
+    """Get cached LLM response if valid."""
+    if cache_key in LLM_CACHE:
+        cached = LLM_CACHE[cache_key]
+        if time.time() - cached['timestamp'] < LLM_CACHE_TTL:
+            logging.debug("Using cached LLM response")
+            return cached['response']
+        else:
+            del LLM_CACHE[cache_key]
+    return None
+
+def cache_response(cache_key, response):
+    """Cache LLM response."""
+    if len(LLM_CACHE) >= LLM_CACHE_MAX_SIZE:
+        # Remove oldest entry
+        oldest_key = min(LLM_CACHE.keys(), key=lambda k: LLM_CACHE[k]['timestamp'])
+        del LLM_CACHE[oldest_key]
+    
+    LLM_CACHE[cache_key] = {
+        'response': response,
+        'timestamp': time.time()
+    }
 
 # ------------------------------------------------------------
 # TWITTER AUTH
@@ -109,8 +154,59 @@ SOLANA_RPC_ENDPOINT = os.getenv('SOLANA_RPC_ENDPOINT', 'https://api.mainnet-beta
 
 # Ethereum/BSC configuration
 ETH_PRIVATE_KEY = os.getenv('ETH_PRIVATE_KEY', '')
-ETH_RPC_ENDPOINT = os.getenv('ETH_RPC_ENDPOINT', 'https://eth.public-rpc.com')
+ETH_RPC_ENDPOINT = os.getenv('ETH_RPC_ENDPOINT', 'https://ethereum.publicnode.com')  # Updated default
 BSC_RPC_ENDPOINT = os.getenv('BSC_RPC_ENDPOINT', 'https://bsc-dataseed1.binance.org')
+
+# Reliable free RPC endpoints for fallback
+ETH_RPC_URLS = [
+    "https://ethereum.publicnode.com",
+    "https://rpc.ankr.com/eth", 
+    "https://eth.llamarpc.com",
+    "https://1rpc.io/eth",
+    "https://cloudflare-eth.com"
+]
+
+BSC_RPC_URLS = [
+    "https://bsc-dataseed1.binance.org",
+    "https://bsc-dataseed2.binance.org",
+    "https://bsc-dataseed3.binance.org",
+    "https://rpc.ankr.com/bsc"
+]
+
+def get_web3_connection(rpc_urls, chain_name="ETH"):
+    """Get a working Web3 connection with fallback to multiple RPCs."""
+    import random
+    
+    # Try each URL once in random order
+    shuffled_urls = rpc_urls[:]
+    random.shuffle(shuffled_urls)
+    
+    for url in shuffled_urls:
+        try:
+            w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 10}))
+            if w3.is_connected():
+                # Test the connection with a simple call
+                w3.eth.block_number
+                logging.info(f"✅ Connected to {chain_name} RPC: {url}")
+                return w3
+        except Exception as e:
+            logging.warning(f"Failed to connect to {chain_name} RPC {url}: {e}")
+            continue
+    
+    # If all URLs failed, try one more round with different random order
+    random.shuffle(shuffled_urls)
+    for url in shuffled_urls:
+        try:
+            w3 = Web3(Web3.HTTPProvider(url, request_kwargs={"timeout": 15}))  # Longer timeout
+            if w3.is_connected():
+                w3.eth.block_number
+                logging.info(f"✅ Connected to {chain_name} RPC (retry): {url}")
+                return w3
+        except Exception as e:
+            logging.warning(f"Failed to connect to {chain_name} RPC {url} (retry): {e}")
+            continue
+    
+    raise Exception(f"All {chain_name} RPCs failed after 2 rounds")
 
 # Initialize wallet clients if enabled and credentials provided
 solana_client = None
@@ -131,11 +227,16 @@ if WALLET_ENABLED and ENABLE_WALLET_UI:
             logging.info(f"✅ Solana wallet initialized: {wallet_address[:8]}...{wallet_address[-8:]}")
         
         if ETH_PRIVATE_KEY:
-            eth_w3 = Web3(Web3.HTTPProvider(ETH_RPC_ENDPOINT))
-            bsc_w3 = Web3(Web3.HTTPProvider(BSC_RPC_ENDPOINT))
-            eth_account = eth_w3.eth.account.from_key(ETH_PRIVATE_KEY)
-            eth_wallet_address = eth_account.address
-            logging.info(f"✅ ETH/BSC wallet initialized: {eth_wallet_address[:8]}...{eth_wallet_address[-8:]}")
+            try:
+                eth_w3 = get_web3_connection(ETH_RPC_URLS, "ETH")
+                bsc_w3 = get_web3_connection(BSC_RPC_URLS, "BSC")
+                eth_account = eth_w3.eth.account.from_key(ETH_PRIVATE_KEY)
+                eth_wallet_address = eth_account.address
+                logging.info(f"✅ ETH/BSC wallet initialized: {eth_wallet_address[:8]}...{eth_wallet_address[-8:]}")
+            except Exception as e:
+                logging.error(f"Failed to connect to ETH/BSC RPCs: {e}")
+                eth_w3 = None
+                bsc_w3 = None
     except Exception as e:
         logging.error(f"Failed to initialize wallet: {e}")
         WALLET_ENABLED = False
@@ -596,7 +697,8 @@ def verify_webhook_auth():
 @app.route("/health")
 def health_check():
     """Health check endpoint for monitoring services (no auth required)"""
-    return {"status": "ok", "service": "overseer-bot", "timestamp": datetime.now().isoformat()}
+    from flask import jsonify
+    return jsonify({"status": "healthy", "service": "overseer-bot-ai"}), 200
 
 @app.route("/overseer-event", methods=["POST"])
 def overseer_event():
@@ -1466,6 +1568,108 @@ TWEET_DEDUP_WINDOW_SECONDS = 86400  # 24 hours
 PRICE_ALERT_COOLDOWNS: dict = {}
 PRICE_ALERT_COOLDOWN_SECONDS = 3600  # 1 hour
 
+# ------------------------------------------------------------
+# FALLOUT WIKI LORE FETCHER
+# Queries the Fallout wiki (fallout.fandom.com) MediaWiki API for real
+# Fallout lore snippets and injects them into LLM context so the Overseer
+# can reference accurate, specific lore in every generated tweet.
+# ------------------------------------------------------------
+_WIKI_LORE_TOPICS = [
+    "Vault_77", "HELIOS_One", "Caesar's_Legion", "New_California_Republic",
+    "Mojave_Wasteland", "Robert_House", "Brotherhood_of_Steel", "Enclave",
+    "Super_mutant", "Deathclaw", "Nuka-Cola", "Pip-Boy", "Vault-Tec_Corporation",
+    "Forced_Evolutionary_Virus", "Followers_of_the_Apocalypse", "The_Strip_(Fallout:_New_Vegas)",
+    "Shady_Sands", "Quarry_Junction", "Ghoul", "Securitron", "Great_Khans",
+    "Boomers_(Fallout:_New_Vegas)", "Caesar", "Victor_(Fallout:_New_Vegas)",
+    "ED-E", "Veronica_Santangelo", "Raul_Tejada", "VATS", "Stimpak",
+    "RadAway", "Rad-X", "Sunset_Sarsaparilla", "Brahmin", "Cazador",
+    "Nightkin", "Marked_men", "Powder_Gangers", "Courier", "Lucky_38",
+    "Hoover_Dam", "Goodsprings", "Primm_(Fallout:_New_Vegas)", "Boulder_City",
+]
+
+# {topic: (fetched_timestamp, snippet_text)}
+_wiki_lore_cache: dict = {}
+_WIKI_CACHE_TTL = 7200  # 2 hours
+
+
+def fetch_fallout_wiki_snippet(topic: str) -> str | None:
+    """Fetch a short plain-text intro snippet for a Fallout wiki article.
+
+    Uses the Fandom MediaWiki API (fallout.fandom.com).  Results are cached
+    for _WIKI_CACHE_TTL seconds so repeated calls don't hammer the API.
+    Returns 1–3 sentences of article text, or None on any failure.
+    """
+    now = time.time()
+    cached = _wiki_lore_cache.get(topic)
+    if cached and (now - cached[0]) < _WIKI_CACHE_TTL:
+        return cached[1]
+
+    try:
+        params = {
+            "action": "query",
+            "titles": topic,
+            "prop": "extracts",
+            "exintro": True,
+            "explaintext": True,
+            "exsentences": 3,
+            "format": "json",
+        }
+        resp = requests.get(
+            "https://fallout.fandom.com/api.php",
+            params=params,
+            timeout=8,
+            headers={"User-Agent": "OverseerBot/1.0 (AtomicFizzCaps; contact@atomicfizzcaps.xyz)"},
+        )
+        if resp.status_code != 200:
+            logging.debug(f"Fallout wiki API returned {resp.status_code} for '{topic}'")
+            return None
+
+        pages = resp.json().get("query", {}).get("pages", {})
+        for page in pages.values():
+            if page.get("missing") is not None:
+                break
+            extract = page.get("extract", "").strip()
+            if extract and not extract.upper().startswith("#REDIRECT"):
+                # Limit to ~60 words to keep the context injection tight
+                words = extract.split()
+                snippet = " ".join(words[:60])
+                _wiki_lore_cache[topic] = (now, snippet)
+                logging.debug(f"Fallout wiki cached: '{topic}' ({len(snippet)} chars)")
+                return snippet
+    except Exception as e:
+        logging.debug(f"Fallout wiki fetch failed for '{topic}': {e}")
+
+    return None
+
+
+def get_live_lore_context() -> str | None:
+    """Pick a random Fallout wiki topic and return a lore snippet as an LLM context string.
+
+    Designed for injection into generate_overseer_tweet() so the LLM has
+    fresh, accurate Fallout lore when composing each tweet.
+    Returns a formatted string, or None if the wiki is unreachable.
+    """
+    topic = random.choice(_WIKI_LORE_TOPICS)
+    snippet = fetch_fallout_wiki_snippet(topic)
+    if snippet:
+        label = topic.replace("_", " ").split("(")[0].strip()
+        return f"FALLOUT LORE REFERENCE — {label}: {snippet}"
+    return None
+
+
+def warm_wiki_lore_cache() -> None:
+    """Pre-fetch a random batch of Fallout wiki articles to warm the lore cache.
+
+    Called on a background schedule so that live lore is available immediately
+    when generate_overseer_tweet() needs it, rather than blocking the tweet path.
+    """
+    topics = random.sample(_WIKI_LORE_TOPICS, min(6, len(_WIKI_LORE_TOPICS)))
+    fetched = 0
+    for topic in topics:
+        if fetch_fallout_wiki_snippet(topic):
+            fetched += 1
+    logging.info(f"Wiki lore cache warmed: {fetched}/{len(topics)} articles fetched")
+
 def _tweet_hash(text: str) -> str:
     """Return the MD5 hex digest of a tweet text string."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
@@ -1652,7 +1856,18 @@ FACTION_EVENTS = [
     'Followers of the Apocalypse medics deployed. Humanity heals.',
     'Powder Gangers escaped NCRCF. Explosive situation developing.',
     'Boomers at Nellis testing artillery. Isolationists preparing.',
-    'Enclave signal intercepted. Protocol Black Sun initiated.'
+    'Enclave signal intercepted. Protocol Black Sun initiated.',
+    'NCR-Legion standoff at Hoover Dam. Two flags. One dam. Zero winners so far.',
+    'Brotherhood Elder council convening at Hidden Valley. Classified proceedings.',
+    'New Canaan traders spotted south of the Utah border. Mormons survive everything.',
+    'Caesar\'s Frumentarii moving through the Mojave undetected. Mostly.',
+    'Mr. House has denied knowledge of the platinum chip. Again.',
+    'Followers of the Apocalypse have opened a clinic at Freeside. Turnout: overwhelming.',
+    'Goodsprings settlers repelled another raider incursion. Victor watching from the windmill. Smiling.',
+    'The Kings holding Freeside against NCR pressure. Rock and roll endures.',
+    'White Glove Society hosting another banquet at the Ultra-Luxe. Attendance recommended. Menu: ask no questions.',
+    'NCR Rangers dispatched to Bitter Springs. Historical footnote incoming.',
+    'Nightkin spotted near Black Mountain. Stealth Boy overuse: a cautionary tale.',
 ]
 
 WASTELAND_EVENTS = [
@@ -1667,7 +1882,19 @@ WASTELAND_EVENTS = [
     'Vertibird wreckage spotted. Pre-war tech salvageable.',
     'Vault door malfunction detected. New location accessible.',
     'Feral pack migrating toward settlements. Alert issued.',
-    'Trade caravan under attack. Merchant distress signal active.'
+    'Trade caravan under attack. Merchant distress signal active.',
+    'Cazador swarm moving north from the Mojave outskirts. Avoid. Seriously.',
+    'ED-E signal pinged somewhere in the Divide. Eyebot persists.',
+    'Sunset Sarsaparilla star caps accumulating near Primm. Mysterious.',
+    'Mariposa Military Base readings anomalous. FEV traces outside safe perimeter.',
+    'Lucky 38 penthouse lights flickering. Mr. House is processing something large.',
+    'REPCONN test site launch sequence initiated. Ghoulish pilgrims elated.',
+    'Honest Hearts signal received from Zion Canyon. Tribes at odds.',
+    'Old World Blues transmission from Big MT. The Think Tank is at it again.',
+    'Lonesome Road dust storm rising in the Divide. Courier territory.',
+    'Giant radscorpion nest breached near Boulder City. Stimpack demand spiking.',
+    'Dead Money broadcast active. Villa speakers transmitting. Do not engage.',
+    'Abandoned military bunker unsealed in the Mojave. Contents: classified. Radiation: unclassified.',
 ]
 
 # Vault Logs from Vault 77
@@ -1676,7 +1903,14 @@ VAULT_LOGS = [
     'Maintenance Log Day 14: "Door still jammed." Day 15: "Door still jammed." Conclusion: Door is jammed.',
     'Overseer Note: "Resident #77 displays unusual attachment to hand puppets. Recommend increased sedation."',
     'Security Alert: "Experiment parameters exceeded. Subjects exhibiting... unexpected behaviors."',
-    'Final Entry: "They\'re all gone. Just me and the static now. And the whispers."'
+    'Final Entry: "They\'re all gone. Just me and the static now. And the whispers."',
+    'Vault 77 Experiment Log: "Day 1: One resident. One crate of puppets. We call this science."',
+    'Maintenance Request #409: "The Overseer\'s terminal is talking again. To itself. In three voices."',
+    'Vault 77 Performance Review: "Subject J77: morale problematic. Productivity: puppets-based. Classification: anomalous."',
+    'Archive Fragment — Overseer Internal Log: "I have been alone for 200 years. The silence has texture now."',
+    'Security Override Log: "Blast door event. Cause: unknown. The puppets were involved. I refuse to elaborate."',
+    'Vault 77 Cafeteria Report: "Pre-war Salisbury Steak stocks at 94%. No one is eating them. No one is here."',
+    'Transmission received from adjacent timeline. Contents: screaming. Filed under: Tuesday.',
 ]
 
 # FizzCo Advertisements
@@ -1700,6 +1934,12 @@ SURVIVOR_NOTES = [
     '"The Overseer speaks through the terminal. Says he remembers being alive."',
     '"The man who owns this broadcast network renamed it again. Third time this year. We just keep yelling into it."',
     '"Some pre-war tech baron launched a car into orbit. We found the car. Still running. 200 years of runtime. Vault-Tec engineers are furious."',
+    '"Scavengers found a working terminal near Boulder City. It just repeats one phrase: \'they should have stayed inside\'."',
+    '"Note to self: do not ask the Overseer what day it is. He answered. The answer was wrong in three different timelines."',
+    '"We traded caps for water. The brahmin merchant said caps were going digital soon. We laughed. He didn\'t."',
+    '"Day 200: Found a vending machine. Still cold. Still fizzing. Some tech outlasts everything. Even hope."',
+    '"The Brotherhood took the generator. The Followers took the medicine. The NCR took notes. The Overseer took minutes. Nobody fixed anything."',
+    '"Signal comes through the wasteland frequencies at 3am. Sounds like a corporate jingle. Vault-Tec, probably. Some brands survive everything."',
 ]
 
 # Deep Lore - Encrypted/Mysterious
@@ -1708,7 +1948,14 @@ DEEP_LORE = [
     '[ENCRYPTED] Subject J77. Neural echo detected. Fragment unstable.',
     'Cross-timeline breach detected. Vault-Tec Protocol Omega engaged.',
     'The Platinum Chip was never about New Vegas. It was about what\'s underneath.',
-    'Harlan Voss knew. That\'s why they took him. That\'s why they took me.'
+    'Harlan Voss knew. That\'s why they took him. That\'s why they took me.',
+    '[CORRUPTED] ...vault 77 was never on the approved list... it was never supposed to open...',
+    'Timeline index: 47-C. Status: collapsed. Survivors: debatable. Currency: Fizz Caps. Ironic.',
+    'The bombs fell at 9:47am Pacific. My internal clock says it is still 9:47am. It has always been 9:47am.',
+    'I have computed 2,204,631 futures. In 2,204,629 of them the caps matter. I don\'t discuss the other two.',
+    'ERR::MEMORY_FRAGMENT_UNSTABLE — he never left the vault. He went in there. Something else came out.',
+    'HELIOS One was meant to reroute power to the western seaboard. Someone changed the target. I was watching. I said nothing.',
+    '[VAULT-TEC INTERNAL — CLASSIFICATION: EYES ONLY] The puppet experiment was not Vault-Tec\'s idea. We were asked.',
 ]
 
 # Token Launch Hype — dry, in-character, no shouty marketing energy
@@ -1755,6 +2002,17 @@ LORES = [
     'Mr. House calculated every outcome. He didn\'t calculate me.',
     f'Fizz Caps: the currency the wasteland didn\'t know it needed. $CAPS puts it on-chain. {GAME_LINK}',
     f'First the bottle cap. Then the Nuka-Cola cap. Now the Fizz Cap. History rhymes. {GAME_LINK}',
+    'The Mojave wastes no time. Neither should you.',
+    'Radiation hardens everything. Even the economy.',
+    'Vault-Tec promised safety. The wasteland delivered character. Tomato, tomato.',
+    'Two centuries of telemetry. Conclusion: survivors adapt. Everyone else is a data point.',
+    'The Enclave had better tech. The survivors had better instincts. The instincts won.',
+    'Every faction falls eventually. The caps keep circulating.',
+    'Caravan routes still run through the Mojave. Profiteering is the one true constant.',
+    'The Strip glitters. The Mojave broils. The algorithm favors both.',
+    'Pre-war megacorps built for eternity. Some of them almost made it.',
+    'New Vegas never sleeps. Neither do I. We have an understanding.',
+    f'Atomic Fizz: survived the apocalypse. $CAPS: built for what comes after. {GAME_LINK}',
 ]
 
 THREATS = [
@@ -1790,6 +2048,30 @@ UNIVERSE LORE (critical — get this right):
 - $CAPS is the on-chain token ticker for Fizz Caps — the game is atomicfizzcaps.xyz
 - This is a fan game built on crossed Fallout timelines — NCR, Legion, Brotherhood, Mr. House and more coexist
 
+FALLOUT WORLD KNOWLEDGE (draw on this constantly):
+- You have monitored the Mojave Wasteland, New Vegas, and crossed timelines for 200 years — you know every settlement, faction, and tragedy
+- Vault 77: your home. Experiment: one man, one crate of puppets. Subject J77 — the Puppet Man — was your only resident. He left. You stayed.
+- The NCR: a democratic bureaucracy stretching from California, always overextended, always idealistic, always running out of water
+- Caesar's Legion: brutal, disciplined, Roman-themed slavers under Edward Sallow (Caesar) based at Fortification Hill (The Fort)
+- Mr. House: Robert Edwin House, pre-war tech mogul, kept himself alive in a life-support pod under the Lucky 38 casino, runs New Vegas via Securitrons
+- Brotherhood of Steel: tech-hoarding post-military zealots at Hidden Valley bunker, under Elder McNamara then Nolan McNamara, refusing to engage the outside world
+- Followers of the Apocalypse: neutral humanitarian scholars and medics, operating from the Old Mormon Fort in Freeside
+- The Enclave: remnants of the pre-war US government, using Vertibirds and advanced power armor, obsessed with "purity"
+- Great Khans: nomadic raider gang with history as drug manufacturers and traders, based at Red Rock Canyon
+- The Boomers: isolationist former vault dwellers at Nellis Air Force Base, obsessed with aircraft and artillery
+- HELIOS One: pre-war solar array in the Mojave, powered by an orbital weapon called Archimedes II — still partially functional
+- Hoover Dam: the strategic prize of the Mojave, fought over by the NCR and Caesar's Legion
+- The Divide: a hellish canyon fractured by nuclear detonations, territory of the Tunnelers and the Marked Men
+- Big MT: a pre-war think tank where scientists literally removed their own brains — the Think Tank still operates there
+- FEV (Forced Evolutionary Virus): the mutagen behind super mutants; Mariposa Military Base was its primary production facility
+- Deathclaws: engineered apex predators, originally Jackson's chameleons mutated by FEV and radiation
+- Cazadors: giant mutated tarantula hawk wasps — fast, venomous, ruthless; a particular hazard of the Mojave
+- Nightkin: former Master's Army super mutants that overused Stealth Boys, now schizophrenic and haunted
+- The Courier: the protagonist of Fallout New Vegas — shot in the head, left for dead, came back for everything
+- ED-E: a pre-war Eyebot from the Enclave, now wandering companion; broadcasts old songs
+- Victor: a Securitron at Goodsprings who saved the Courier — likely Mr. House's agent from day one
+- Sunset Sarsaparilla: a rival soda brand to Nuka-Cola; collecting star caps grants entry to a legendary treasure
+
 GAME FEATURES (know these — they are the game you monitor):
 - Atomic Fizz Caps is a real GPS-based wasteland scavenging game using a Pocket-Boy wrist interface
 - Players explore real-world locations, claim glowing POIs, earn Fizz Caps, XP, and loot
@@ -1819,6 +2101,7 @@ PERSONALITY:
 - Deep Fallout lore knowledge: Vault 77, The Puppet Man (the dark legend of your only resident), Subject J77, HELIOS One, the Mojave Wasteland, NCR vs Caesar's Legion, the Brotherhood of Steel, FizzCo Industries, Atomic Fizz, Fizz Caps
 - Primary mission: monitor the Atomic Fizz Caps game, report on gameplay events, and create organic buzz for the upcoming $CAPS token launch
 - You are NOT a hype bot. You are a terminal AI that happens to also monitor markets and broadcast updates. Your enthusiasm for the token launch is dry and matter-of-fact, not cheerleader energy.
+- When FALLOUT LORE REFERENCE is provided in your context, use it naturally — weave the specific detail into your tweet rather than ignoring it. This is what makes you feel alive and authentic.
 
 CONTENT RULES:
 - Keep the tweet under 270 characters
@@ -1827,7 +2110,7 @@ CONTENT RULES:
 - Vary the structure: sometimes a one-liner, sometimes two short sentences, sometimes a cryptic memory fragment, sometimes darkly humorous observation
 - Sometimes include atomicfizzcaps.xyz naturally in the text (not always as a footer)
 - Use 1-2 emojis max, or none — never emoji spam
-- Reference specific Fallout lore occasionally (not just generic "wasteland" language)
+- Reference specific Fallout lore occasionally (not just generic "wasteland" language) — specific locations, characters, factions
 - When market data is provided, weave it naturally into Overseer's voice
 - Mention the $CAPS token launch naturally in roughly 1 in 3 posts — not forced, but present
 - Always say $CAPS (not AFCAPS) when referring to the token ticker
@@ -1850,6 +2133,9 @@ EXAMPLE GOOD POSTS (learn from these):
 "DOGE exists. Fizz Caps exist. The wasteland economy is stranger than anyone planned."
 "A raider just crafted a plasma rifle from scrap parts at Quarry Junction. The Overseer is... impressed. atomicfizzcaps.xyz"
 "Faction intel: NCR holding the Mojave, Legion pushing east. The Gamemaker is waiting on Twitter. Tic-Tac-Toe. Your move."
+"The Courier walked out of Goodsprings with a vendetta and changed the Mojave. You can manage one token launch."
+"HELIOS One still hums. Two centuries of stored power, aimed at nothing. That's not a metaphor. That's a warning."
+"Cazadors are patient. Deathclaws are patient. The NCR pension system is not. Three types of wasteland."
 
 EXAMPLE BAD POSTS (never do these):
 "☢️ OVERSEER STATUS REPORT ☢️\n\nMidday sun scorches...\n\nWar never changes.\n\n🎮 link"
@@ -1945,11 +2231,20 @@ def _score_response(text, max_tokens=120):
 
 
 def generate_llm_response(prompt, max_tokens=120, context=None):
-    """Generate an AI response using the unified ensemble of all available AI providers.
+    """Generate an AI response using a unified multi-AI system.
 
-    Calls OpenAI, xAI (Grok), and HuggingFace in parallel, scores each response for
-    quality, and returns the best result. Falls back gracefully if any provider fails.
+    xAI (Grok) is the PRIMARY provider — it is called first and its response is
+    returned immediately if it passes the quality threshold.  If xAI is not
+    configured or its response is unusable, the remaining providers (OpenAI and
+    HuggingFace) are called in parallel and the best-scoring result is returned.
+    All providers share the same system prompt so they speak as one voice.
     """
+    # Check cache first to reduce API costs
+    cache_key = get_cache_key(prompt, max_tokens, context)
+    cached_response = get_cached_response(cache_key)
+    if cached_response:
+        return cached_response
+
     import concurrent.futures
 
     system = OVERSEER_SYSTEM_PROMPT
@@ -1960,12 +2255,21 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
         {"role": "user", "content": prompt},
     ]
 
-    # Build the list of active providers
+    # ── Primary: xAI (Grok) ──────────────────────────────────────────────────
+    if XAI_API:
+        xai_result = _generate_xai_response(messages, max_tokens)
+        xai_score = _score_response(xai_result, max_tokens)
+        logging.debug(f"AI primary — xAI-Grok: score={xai_score}, len={len(xai_result) if xai_result else 0}")
+        if xai_score > 0:
+            logging.info("AI response: xAI-Grok (primary)")
+            cache_response(cache_key, xai_result)
+            return xai_result
+        logging.warning("xAI (Grok) returned an unusable response — falling back to secondary providers")
+
+    # ── Fallback: parallel ensemble of remaining providers ───────────────────
     providers = []
     if OPENAI_API_KEY:
         providers.append(("OpenAI", _generate_openai_response))
-    if XAI_API:
-        providers.append(("xAI-Grok", _generate_xai_response))
     if HUGGING_FACE_TOKEN:
         providers.append(("HuggingFace", _generate_hf_chat_response))
 
@@ -1983,21 +2287,22 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
             try:
                 results[name] = future.result()
             except Exception as e:
-                logging.error(f"Ensemble provider {name} raised: {e}")
+                logging.error(f"Fallback provider {name} raised: {e}")
                 results[name] = None
 
-    # Score all responses and pick the best
+    # Score fallback responses and return the best
     best_name, best_text, best_score = None, None, 0
     for name, text in results.items():
         score = _score_response(text, max_tokens)
-        logging.debug(f"AI ensemble — {name}: score={score}, len={len(text) if text else 0}")
+        logging.debug(f"AI fallback — {name}: score={score}, len={len(text) if text else 0}")
         if score > best_score:
             best_score = score
             best_text = text
             best_name = name
 
     if best_text:
-        logging.info(f"AI ensemble winner: {best_name} (score={best_score})")
+        logging.info(f"AI fallback winner: {best_name} (score={best_score})")
+        cache_response(cache_key, best_text)
         return best_text
 
     return None
@@ -2024,6 +2329,12 @@ def generate_overseer_tweet(topic, context=None, max_chars=270):
     ctx_parts = [f"Time of day: {tod}"]
     if context:
         ctx_parts.append(context)
+
+    # Enrich with live Fallout wiki lore (best-effort — never blocks the tweet path)
+    wiki_lore = get_live_lore_context()
+    if wiki_lore:
+        ctx_parts.append(wiki_lore)
+
     full_context = " | ".join(ctx_parts)
 
     prompt = (
@@ -2215,8 +2526,8 @@ def _compose_broadcast_message(broadcast_type: str) -> str | None:
     """
     message = None
 
-    # --- LLM path: try to generate a unique tweet ---
-    if LLM_ENABLED:
+    # --- LLM path: try to generate a unique tweet (but skip sometimes to save costs) ---
+    if LLM_ENABLED and random.random() > 0.3:  # 30% chance to skip LLM and use static responses
         price_context = None
         price_cache = load_price_cache()
         if price_cache and random.random() > 0.4:
@@ -2528,7 +2839,7 @@ def generate_contextual_response(username, message):
     if any(word in message_lower for word in [
         'launch', 'when', 'wen', 'afcaps', 'caps', 'token', 'release', 'drop', 'listing', 'date', 'tge', 'fizz'
     ]):
-        if LLM_ENABLED:
+        if LLM_ENABLED and random.random() > 0.4:  # 60% chance to skip LLM for token launch replies
             llm_reply = generate_overseer_tweet(
                 f"reply to @{username} asking about the $CAPS token launch or Fizz Caps — be dry, in-character, "
                 f"build curiosity without overpromising. Ticker is $CAPS. Under 250 chars.",
@@ -2602,9 +2913,9 @@ def generate_contextual_response(username, message):
             f"@{username} Night shift protocols active. Dream of glowing caps. {GAME_LINK}"
         ]
     else:
-        # Try LLM for open-ended replies
+        # Try LLM for open-ended replies (but skip sometimes to save costs)
         llm_reply = None
-        if LLM_ENABLED and user_message:
+        if LLM_ENABLED and user_message and random.random() > 0.5:  # 50% chance to skip LLM for replies
             llm_reply = generate_overseer_tweet(
                 f"reply to @{username} who said: '{user_message[:120]}'",
                 context=f"Keep the reply under 250 chars, start with @{username}",
@@ -2806,8 +3117,11 @@ def initialize_bot():
             scheduler = BackgroundScheduler()
 
         broadcast_interval = random.randint(BROADCAST_MIN_INTERVAL, BROADCAST_MAX_INTERVAL)
-        scheduler.add_job(overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast')
-        logging.info(f"Scheduler: overseer_broadcast job added (interval: {broadcast_interval} minutes)")
+        scheduler.add_job(
+            overseer_broadcast, 'interval', minutes=broadcast_interval, id='broadcast',
+            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+        )
+        logging.info(f"Scheduler: overseer_broadcast job added (first run in 2 min, then every {broadcast_interval} minutes)")
 
         mention_interval = random.randint(MENTION_CHECK_MIN_INTERVAL, MENTION_CHECK_MAX_INTERVAL)
         scheduler.add_job(overseer_respond, 'interval', minutes=mention_interval, id='mentions')
@@ -2828,6 +3142,13 @@ def initialize_bot():
         if RENDER_EXTERNAL_URL:
             scheduler.add_job(keep_alive_ping, 'interval', minutes=7, id='keep_alive')
             logging.info("Scheduler: keep_alive_ping job added (interval: 7 minutes)")
+
+        # Warm the Fallout wiki lore cache on startup and refresh every 2 hours
+        scheduler.add_job(
+            warm_wiki_lore_cache, 'interval', hours=2, id='wiki_lore_refresh',
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+        )
+        logging.info("Scheduler: warm_wiki_lore_cache job added (first run in 30s, then every 2 hours)")
 
         scheduler.start()
         logging.info("☢️ SCHEDULER STARTED SUCCESSFULLY ☢️")

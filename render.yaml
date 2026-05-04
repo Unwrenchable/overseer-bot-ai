@@ -20,8 +20,10 @@ services:
     env: python
     plan: starter
     region: oregon
+    healthCheckPath: /health
     buildCommand: pip install -r requirements-lock.txt
     startCommand: gunicorn --config gunicorn_config.py overseer_bot:app
+    healthCheckPath: /health
     envVars:
       # Twitter API Credentials - MUST be set in Render dashboard
       - key: CONSUMER_KEY
@@ -59,7 +61,7 @@ services:
       - key: ETH_PRIVATE_KEY
         sync: false  # CRITICAL: NEVER commit private keys!
       - key: ETH_RPC_ENDPOINT
-        value: "https://eth.public-rpc.com"
+        value: "https://ethereum.publicnodecnode.com"
       - key: BSC_RPC_ENDPOINT
         value: "https://bsc-dataseed1.binance.org"
 
@@ -99,7 +101,7 @@ services:
       - key: SCALPER_MIN_LIQUIDITY_USD
         value: "5000"
 
-      # Render keep-alive - Set to your service URL to prevent sleeping on starter plan
-      # e.g. https://overseer-bot.onrender.com
+      # In-app self-ping backup - used only while the service is already awake
+      # External anti-sleep heartbeat lives in .github/workflows/render-keepalive.yml
       - key: RENDER_EXTERNAL_URL
         sync: false
