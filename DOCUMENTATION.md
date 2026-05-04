@@ -189,7 +189,7 @@ All configuration is via environment variables. Copy `.env.example` → `.env` a
 |----------|---------|-------------|
 | `WEBHOOK_API_KEY` | _(empty)_ | Secures `POST /overseer-event`; if empty, auth is skipped |
 | `PORT` | `5000` | HTTP server port |
-| `RENDER_EXTERNAL_URL` | _(empty)_ | Your public Render URL; used by keep-alive ping |
+| `RENDER_EXTERNAL_URL` | _(empty)_ | Your public Render URL; used by the in-app self-ping backup |
 
 ---
 
@@ -205,7 +205,7 @@ All jobs are registered in `initialize_bot()` using APScheduler.
 | Mention Response | `overseer_respond` | Random 15–30 min interval |
 | Retweet Hunt | `overseer_retweet_hunt` | Every 60 min |
 | Daily Diagnostic | `overseer_diagnostic` | 08:00 daily |
-| Keep-alive Ping | `keep_alive_ping` | Every 14 min |
+| Keep-alive Ping | `keep_alive_ping` | Every 7 min |
 
 `overseer_respond` and `overseer_retweet_hunt` are silently skipped when `TWITTER_READ_ENABLED=False` (Free tier).
 
@@ -451,7 +451,7 @@ grep "duplicate" overseer_ai.log  # duplicate tweet attempts
 
 ### Keep-Alive
 
-`keep_alive_ping` runs every 14 minutes and pings `RENDER_EXTERNAL_URL/health` to prevent Render's free tier from spinning down the service.
+`keep_alive_ping` runs every 7 minutes and pings `RENDER_EXTERNAL_URL/health`, but this only helps while the web service is already awake. To keep a public Render free instance warm across idle windows and fresh deploys, use the scheduled GitHub Actions heartbeat in `.github/workflows/render-keepalive.yml` with a repository Actions variable named `RENDER_HEALTHCHECK_URL`.
 
 ---
 
