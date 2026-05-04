@@ -101,7 +101,7 @@ services:
       - key: SCALPER_MIN_LIQUIDITY_USD
         value: "5000"
 
-      # Render keep-alive - Set to your service URL to prevent sleeping on starter plan
-      # e.g. https://overseer-bot.onrender.com
+      # In-app self-ping backup - used only while the service is already awake
+      # External anti-sleep heartbeat lives in .github/workflows/render-keepalive.yml
       - key: RENDER_EXTERNAL_URL
         sync: false

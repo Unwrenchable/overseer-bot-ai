@@ -63,6 +63,10 @@ def _reset_price_cooldowns():
     bot.PRICE_ALERT_COOLDOWNS.clear()
 
 
+def _reset_llm_cache():
+    bot.LLM_CACHE.clear()
+
+
 # ===========================================================================
 # 1. Tweet deduplication
 # ===========================================================================
@@ -407,6 +411,14 @@ class TestOverseerDiagnostic(unittest.TestCase):
         self.mock_client.create_tweet.side_effect = bot.tweepy.TweepyException("network error")
         bot.overseer_diagnostic()  # should not raise
 
+    def test_posts_static_fallback_when_llm_returns_none(self):
+        with patch.object(bot, 'generate_overseer_tweet', return_value=None):
+            bot.overseer_diagnostic()
+        self.mock_client.create_tweet.assert_called_once()
+        tweet_text = self.mock_client.create_tweet.call_args[1]['text']
+        assert len(tweet_text) <= bot.TWITTER_CHAR_LIMIT, \
+            f"Diagnostic fallback tweet exceeds 280 chars: {len(tweet_text)}"
+
 
 # ===========================================================================
 # 10. generate_overseer_tweet — LLM disabled path
@@ -460,7 +472,52 @@ class TestGenerateOverseerTweet(unittest.TestCase):
 
 
 # ===========================================================================
-# 11. Lore / personality content — basic sanity checks
+# 11. generate_llm_response / broadcast fallback behavior
+# ===========================================================================
+
+class TestLlmFallbacks(unittest.TestCase):
+
+    def setUp(self):
+        _reset_llm_cache()
+
+    def tearDown(self):
+        _reset_llm_cache()
+
+    def test_falls_back_to_openai_when_xai_reply_is_too_short(self):
+        original_xai = bot.XAI_API
+        original_openai = bot.OPENAI_API_KEY
+        original_hf = bot.HUGGING_FACE_TOKEN
+        try:
+            bot.XAI_API = "xai-test-key"
+            bot.OPENAI_API_KEY = "openai-test-key"
+            bot.HUGGING_FACE_TOKEN = None
+            openai_text = "Vault 77 diagnostics remain nominal. $CAPS launch protocols continue."
+            with patch.object(bot, '_generate_xai_response', return_value="low"), \
+                 patch.object(bot, '_generate_openai_response', return_value=openai_text):
+                result = bot.generate_llm_response("status update", max_tokens=40)
+            assert result == openai_text, "Should fall back when xAI returns an unusably short reply"
+        finally:
+            bot.XAI_API = original_xai
+            bot.OPENAI_API_KEY = original_openai
+            bot.HUGGING_FACE_TOKEN = original_hf
+
+    def test_compose_broadcast_message_uses_static_fallback_when_llm_returns_none(self):
+        original_llm = bot.LLM_ENABLED
+        try:
+            bot.LLM_ENABLED = True
+            with patch.object(bot.random, 'random', return_value=0.9), \
+                 patch.object(bot, 'generate_overseer_tweet', return_value=None), \
+                 patch.object(bot, 'load_price_cache', return_value={}):
+                message = bot._compose_broadcast_message('status_report')
+            assert message, "Broadcast generation should fall back to static content"
+            assert len(message) <= bot.TWITTER_CHAR_LIMIT, \
+                f"Broadcast fallback exceeds 280 chars: {len(message)}"
+        finally:
+            bot.LLM_ENABLED = original_llm
+
+
+# ===========================================================================
+# 12. Lore / personality content — basic sanity checks
 # ===========================================================================
 
 class TestLoreContent(unittest.TestCase):
