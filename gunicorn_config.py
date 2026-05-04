@@ -19,8 +19,11 @@ bind = f"0.0.0.0:{os.getenv('PORT', '5000')}"
 # Multiple workers would duplicate these tasks
 workers = 1
 
-# Worker class - use sync for compatibility with threading
-worker_class = "sync"
+# Worker class - use gthread for apps with threading
+worker_class = "gthread"
+
+# Number of threads per worker
+threads = 4
 
 # Logging
 accesslog = "-"  # Log to stdout

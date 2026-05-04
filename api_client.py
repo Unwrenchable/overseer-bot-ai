@@ -17,8 +17,6 @@ OVERSEER_BOT_AI_URL = os.getenv('OVERSEER_BOT_AI_URL', '')
 OVERSEER_BOT_AI_API_KEY = os.getenv('OVERSEER_BOT_AI_API_KEY', '')
 OVERSEER_BOT_AI_USERNAME = os.getenv('OVERSEER_BOT_AI_USERNAME', '')
 OVERSEER_BOT_AI_PASSWORD = os.getenv('OVERSEER_BOT_AI_PASSWORD', '')
-TOKEN_SCALPER_URL = os.getenv('TOKEN_SCALPER_URL', '')
-TOKEN_SCALPER_API_KEY = os.getenv('TOKEN_SCALPER_API_KEY', '')
 
 # Polling configuration
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', '15'))  # seconds (default 15s)
@@ -32,12 +30,6 @@ MAX_ALERTS = 100  # Keep last 100 alerts
 # Health status tracking
 HEALTH_STATUS = {
     'overseer_bot_ai': {
-        'status': 'unknown',
-        'last_check': None,
-        'last_success': None,
-        'error': False
-    },
-    'token_scalper': {
         'status': 'unknown',
         'last_check': None,
         'last_success': None,
@@ -299,51 +291,7 @@ def fetch_overseer_bot_ai_alerts() -> Optional[List[dict]]:
         return None
 
 
-def fetch_token_scalper_status() -> Optional[dict]:
-    """
-    Fetch status from Token-scalper /api/status endpoint
-    
-    Returns:
-        Status data dictionary or None if failed
-    """
-    if not TOKEN_SCALPER_URL:
-        return None
-    
-    # Validate URL format
-    if not is_valid_url(TOKEN_SCALPER_URL):
-        error_msg = format_invalid_url_error(TOKEN_SCALPER_URL)
-        if should_log_error('token_scalper', 'invalid_url'):
-            logging.error(f"Invalid TOKEN_SCALPER_URL: {error_msg}")
-        update_health_status('token_scalper', 'unhealthy', error_msg)
-        return None
-    
-    try:
-        url = f"{TOKEN_SCALPER_URL.rstrip('/')}/api/status"
-        headers = {}
-        if TOKEN_SCALPER_API_KEY:
-            headers['Authorization'] = f"Bearer {TOKEN_SCALPER_API_KEY}"
-        
-        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        
-        data = response.json()
-        update_health_status('token_scalper', 'healthy')
-        reset_error_count('token_scalper', 'fetch_status')
-        
-        # Add status as an alert
-        add_alert(
-            'status',
-            'token-scalper',
-            data,
-            f"Status update: {data.get('status', 'unknown')}"
-        )
-        
-        return data
-    except requests.exceptions.RequestException as e:
-        if should_log_error('token_scalper', 'fetch_status'):
-            logging.error(f"Failed to fetch token-scalper status: {e}")
-        update_health_status('token_scalper', 'unhealthy', str(e))
-        return None
+
 
 
 def poll_external_apis():
@@ -369,10 +317,6 @@ def poll_external_apis():
                 fetch_overseer_bot_ai_status()
                 fetch_overseer_bot_ai_alerts()
             
-            # Fetch from token-scalper
-            if TOKEN_SCALPER_URL:
-                fetch_token_scalper_status()
-            
         except Exception as e:
             logging.error(f"Error in polling loop: {e}", exc_info=True)
         
@@ -382,7 +326,7 @@ def poll_external_apis():
 
 def start_polling():
     """Start the background polling thread"""
-    if not OVERSEER_BOT_AI_URL and not TOKEN_SCALPER_URL:
+    if not OVERSEER_BOT_AI_URL:
         logging.warning("No external API URLs configured. Polling disabled.")
         return
     
@@ -398,10 +342,3 @@ elif not is_valid_url(OVERSEER_BOT_AI_URL):
     error_msg = format_invalid_url_error(OVERSEER_BOT_AI_URL)
     update_health_status('overseer_bot_ai', 'unhealthy', error_msg)
     logging.warning(f"OVERSEER_BOT_AI_URL is invalid: {error_msg}")
-
-if not TOKEN_SCALPER_URL:
-    update_health_status('token_scalper', 'disabled', 'No URL configured')
-elif not is_valid_url(TOKEN_SCALPER_URL):
-    error_msg = format_invalid_url_error(TOKEN_SCALPER_URL)
-    update_health_status('token_scalper', 'unhealthy', error_msg)
-    logging.warning(f"TOKEN_SCALPER_URL is invalid: {error_msg}")
