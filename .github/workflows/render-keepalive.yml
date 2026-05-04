@@ -1,0 +1,37 @@
+name: Keep Render awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: render-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping-healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      RENDER_HEALTHCHECK_URL: ${{ vars.RENDER_HEALTHCHECK_URL }}
+    steps:
+      - name: Validate healthcheck URL
+        run: |
+          if [ -z "$RENDER_HEALTHCHECK_URL" ]; then
+            echo "Missing Actions variable: RENDER_HEALTHCHECK_URL" >&2
+            exit 1
+          fi
+
+      - name: Ping Render health endpoint
+        run: |
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5 \
+            "$RENDER_HEALTHCHECK_URL"

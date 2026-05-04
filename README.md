@@ -189,7 +189,7 @@ ENABLE_SCALPER=false
 
 # ── Other ─────────────────────────────────────────────────────────────────
 WEBHOOK_API_KEY=                           # secures /overseer-event
-RENDER_EXTERNAL_URL=                       # your public URL — enables keep-alive ping
+RENDER_EXTERNAL_URL=                       # your public URL — enables the in-app self-ping backup
 PORT=5000
 ```
 
@@ -230,7 +230,7 @@ Edit `MONITORED_TOKENS` in `overseer_bot.py` to add or adjust symbols.
 | Daily Diagnostic | 08:00 daily | System status tweet |
 | Price Alerts | 5 min | Monitor token price thresholds |
 | Market Summary | 08:00, 14:00, 20:00 | Daily price overview tweets |
-| Keep-alive Ping | 14 min | Prevents Render.com sleep |
+| Keep-alive Ping | 7 min | Self-ping backup while the service is already awake |
 
 ---
 
@@ -243,7 +243,8 @@ The repo ships with `render.yaml` and `gunicorn_config.py` for zero-config Rende
 1. Fork this repository
 2. Create a new **Web Service** on [Render.com](https://render.com) pointing to your fork
 3. Set environment variables in the Render dashboard (do **not** put secrets in `render.yaml`)
-4. Deploy — Render runs `gunicorn -c gunicorn_config.py overseer_bot:app` automatically
+4. In GitHub repo settings, add Actions variable `RENDER_HEALTHCHECK_URL=https://your-bot.onrender.com/health` so `.github/workflows/render-keepalive.yml` can keep the public bot warm every 10 minutes
+5. Deploy — Render runs `gunicorn -c gunicorn_config.py overseer_bot:app` automatically
 
 > **Single-worker rule:** `gunicorn_config.py` is pre-set to `workers = 1`. Never increase this — the bot stores state in memory and multiple workers cause duplicate tweets and race conditions.
 
