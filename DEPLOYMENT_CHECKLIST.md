@@ -47,22 +47,36 @@ Set these on your hosting platform (Render, Heroku, etc.):
 
 #### Required
 
-- [ ] `CONSUMER_KEY` - Twitter API
-- [ ] `CONSUMER_SECRET` - Twitter API
-- [ ] `ACCESS_TOKEN` - Twitter API
-- [ ] `ACCESS_SECRET` - Twitter API
-- [ ] `BEARER_TOKEN` - Twitter API
-- [ ] `ADMIN_USERNAME` - Dashboard login (change from 'admin')
-- [ ] `ADMIN_PASSWORD` - Dashboard password (use generated strong password)
+- [ ] `CONSUMER_KEY` — Twitter "API Key" (from the App's *Keys and tokens* page)
+- [ ] `CONSUMER_SECRET` — Twitter "API Key Secret" (same page)
+- [ ] `ACCESS_TOKEN` — Twitter "Access Token" (user-level; regenerate **after** setting Read+Write permissions)
+- [ ] `ACCESS_SECRET` — Twitter "Access Token Secret" (paired with `ACCESS_TOKEN`)
+- [ ] `BEARER_TOKEN` — App-only read token (shown on *Keys and tokens* page)
+- [ ] `ADMIN_USERNAME` — Dashboard login (change from 'admin')
+- [ ] `ADMIN_PASSWORD` — Dashboard password (use generated strong password)
 
 #### Recommended
 
 - [ ] `WEBHOOK_API_KEY` - For securing webhooks (highly recommended)
 - [ ] `PORT` - Default 5000 (optional)
 
-#### Optional
+#### AI / LLM (at least one recommended for AI-generated tweets)
 
-- [ ] `HUGGING_FACE_TOKEN` - For AI features
+> The bot uses a **primary → fallback** AI chain. Set whichever keys you have;
+> the bot automatically selects the best available provider in order.
+
+| Priority | Variable | Provider | Where to get it |
+|----------|----------|----------|-----------------|
+| **Primary** | `XAI_API` | xAI (Grok) | [console.x.ai](https://console.x.ai/) |
+| | `XAI_MODEL` | *(optional)* model name | Default: `grok-3-mini` |
+| Fallback 1 | `OPENAI_API_KEY` | OpenAI / compatible | [platform.openai.com](https://platform.openai.com/api-keys) |
+| | `OPENAI_BASE_URL` | *(optional)* | Override for Groq, Together, Ollama |
+| | `LLM_MODEL` | *(optional)* | Default: `gpt-4o-mini` |
+| Fallback 2 | `HUGGING_FACE_TOKEN` | Hugging Face | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+
+- [ ] `XAI_API` — Primary AI (Grok) — **recommended if you have an xAI key**
+- [ ] `OPENAI_API_KEY` — First fallback (OpenAI or compatible)
+- [ ] `HUGGING_FACE_TOKEN` — Last-resort fallback (free tier available)
 
 ### Step 2: Verify Configuration
 
@@ -95,26 +109,6 @@ Set these on your hosting platform (Render, Heroku, etc.):
 - [ ] Configure firewall rules to restrict dashboard access (if possible)
 - [ ] Set up monitoring/alerts for failed authentication attempts
 - [ ] Document credentials in secure password manager
-- [ ] Share webhook API key securely with Token-scalper admin
-
-### Step 6: Configure Token-scalper Integration
-
-If using Token-scalper bot:
-
-- [ ] Update Token-scalper's `config.json`:
-
-  ```json
-  {
-    "social_media": {
-      "overseer_bot_enabled": true,
-      "overseer_webhook_url": "https://your-overseer-bot.com/token-scalper-alert",
-      "overseer_api_key": "your_WEBHOOK_API_KEY_here"
-    }
-  }
-  ```
-
-- [ ] Test webhook from Token-scalper
-- [ ] Verify alerts appear in Overseer Bot logs
 
 ## Security Checks
 
@@ -196,9 +190,8 @@ If using Token-scalper bot:
 1. Immediately generate new credentials
 2. Update environment variables on hosting platform
 3. Restart service
-4. Update Token-scalper configuration
-5. Review access logs for unauthorized access
-6. Document incident
+4. Review access logs for unauthorized access
+5. Document incident
 
 ### Dashboard Being Attacked
 
@@ -213,9 +206,8 @@ If using Token-scalper bot:
 For issues or questions:
 
 1. Check `SECURITY_GUIDE.md` for detailed setup instructions
-2. Review `AUTHENTICATION_IMPLEMENTATION.md` for technical details
-3. Check logs: `tail -f overseer_ai.log`
-4. Open an issue on GitHub
+2. Check logs: `tail -f overseer_ai.log`
+3. Open an issue on GitHub
 
 ---
 

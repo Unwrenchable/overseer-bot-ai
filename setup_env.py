@@ -157,8 +157,9 @@ def write_env_file(env_vars):
                 'POLL_INTERVAL', 'REQUEST_TIMEOUT'
             ]),
             ("AI FEATURES (Optional)", [
+                'XAI_API', 'XAI_MODEL',
+                'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'LLM_MODEL',
                 'HUGGING_FACE_TOKEN',
-                'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'LLM_MODEL'
             ])
         ]
         
@@ -389,28 +390,41 @@ def setup_optional_features(env_vars):
     """Setup optional features."""
     print_header("Optional Features")
     print()
-    
-    # Hugging Face
-    if prompt_yes_no("Configure Hugging Face AI (for enhanced responses)?", default=False):
-        current_token = env_vars.get('HUGGING_FACE_TOKEN', '')
-        token = prompt_with_default("Hugging Face API token", current_token, password=True)
-        env_vars['HUGGING_FACE_TOKEN'] = token
-    
-    # LLM / OpenAI
+
+    # xAI (Grok) — primary AI
+    if prompt_yes_no("Configure xAI (Grok) AI — PRIMARY AI provider?", default=False):
+        print_info("Get your key at: https://console.x.ai/")
+        current_key = env_vars.get('XAI_API', '')
+        api_key = prompt_with_default("xAI API key", current_key, password=True)
+        env_vars['XAI_API'] = api_key
+
+        current_model = env_vars.get('XAI_MODEL', 'grok-3-mini')
+        model = prompt_with_default("xAI model name", current_model)
+        env_vars['XAI_MODEL'] = model
+
+    # LLM / OpenAI — fallback 1
     print()
-    if prompt_yes_no("Configure LLM / OpenAI AI (for AI-generated tweets)?", default=False):
+    if prompt_yes_no("Configure OpenAI / compatible AI (fallback 1 when xAI unavailable)?", default=False):
         current_key = env_vars.get('OPENAI_API_KEY', '')
         api_key = prompt_with_default("OpenAI API key", current_key, password=True)
         env_vars['OPENAI_API_KEY'] = api_key
 
         current_base_url = env_vars.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-        base_url = prompt_with_default("OpenAI base URL", current_base_url)
+        base_url = prompt_with_default("OpenAI base URL (change for Groq/Together/Ollama)", current_base_url)
         env_vars['OPENAI_BASE_URL'] = base_url
 
         current_model = env_vars.get('LLM_MODEL', 'gpt-4o-mini')
         model = prompt_with_default("LLM model name", current_model)
         env_vars['LLM_MODEL'] = model
-    
+
+    # Hugging Face — fallback 2
+    print()
+    if prompt_yes_no("Configure Hugging Face AI (fallback 2 — free tier available)?", default=False):
+        print_info("Get your token at: https://huggingface.co/settings/tokens")
+        current_token = env_vars.get('HUGGING_FACE_TOKEN', '')
+        token = prompt_with_default("Hugging Face API token", current_token, password=True)
+        env_vars['HUGGING_FACE_TOKEN'] = token
+
     return env_vars
 
 

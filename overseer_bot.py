@@ -56,10 +56,45 @@ VAULT_NUMBER = "77"
 # Configuration constants
 TWITTER_CHAR_LIMIT = 280
 HUGGING_FACE_TIMEOUT = 10
-BROADCAST_MIN_INTERVAL = 30   # minutes
-BROADCAST_MAX_INTERVAL = 45  # minutes
-MENTION_CHECK_MIN_INTERVAL = 15  # minutes
-MENTION_CHECK_MAX_INTERVAL = 30  # minutes
+BROADCAST_MIN_INTERVAL = 60   # minutes (reduced from 30-45 to save costs)
+BROADCAST_MAX_INTERVAL = 90  # minutes (reduced frequency)
+MENTION_CHECK_MIN_INTERVAL = 30  # minutes (reduced from 15-30)
+MENTION_CHECK_MAX_INTERVAL = 45  # minutes (reduced frequency)
+
+# LLM Response Cache to reduce API costs
+LLM_CACHE = {}
+LLM_CACHE_MAX_SIZE = 50
+LLM_CACHE_TTL = 3600  # 1 hour
+
+def get_cache_key(prompt, max_tokens, context=None):
+    """Generate cache key for LLM responses."""
+    key_parts = [str(prompt), str(max_tokens)]
+    if context:
+        key_parts.append(str(context))
+    return hashlib.md5('|'.join(key_parts).encode()).hexdigest()
+
+def get_cached_response(cache_key):
+    """Get cached LLM response if valid."""
+    if cache_key in LLM_CACHE:
+        cached = LLM_CACHE[cache_key]
+        if time.time() - cached['timestamp'] < LLM_CACHE_TTL:
+            logging.debug("Using cached LLM response")
+            return cached['response']
+        else:
+            del LLM_CACHE[cache_key]
+    return None
+
+def cache_response(cache_key, response):
+    """Cache LLM response."""
+    if len(LLM_CACHE) >= LLM_CACHE_MAX_SIZE:
+        # Remove oldest entry
+        oldest_key = min(LLM_CACHE.keys(), key=lambda k: LLM_CACHE[k]['timestamp'])
+        del LLM_CACHE[oldest_key]
+    
+    LLM_CACHE[cache_key] = {
+        'response': response,
+        'timestamp': time.time()
+    }
 
 # ------------------------------------------------------------
 # TWITTER AUTH
@@ -2196,11 +2231,20 @@ def _score_response(text, max_tokens=120):
 
 
 def generate_llm_response(prompt, max_tokens=120, context=None):
-    """Generate an AI response using the unified ensemble of all available AI providers.
+    """Generate an AI response using a unified multi-AI system.
 
-    Calls OpenAI, xAI (Grok), and HuggingFace in parallel, scores each response for
-    quality, and returns the best result. Falls back gracefully if any provider fails.
+    xAI (Grok) is the PRIMARY provider — it is called first and its response is
+    returned immediately if it passes the quality threshold.  If xAI is not
+    configured or its response is unusable, the remaining providers (OpenAI and
+    HuggingFace) are called in parallel and the best-scoring result is returned.
+    All providers share the same system prompt so they speak as one voice.
     """
+    # Check cache first to reduce API costs
+    cache_key = get_cache_key(prompt, max_tokens, context)
+    cached_response = get_cached_response(cache_key)
+    if cached_response:
+        return cached_response
+
     import concurrent.futures
 
     system = OVERSEER_SYSTEM_PROMPT
@@ -2211,12 +2255,21 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
         {"role": "user", "content": prompt},
     ]
 
-    # Build the list of active providers
+    # ── Primary: xAI (Grok) ──────────────────────────────────────────────────
+    if XAI_API:
+        xai_result = _generate_xai_response(messages, max_tokens)
+        xai_score = _score_response(xai_result, max_tokens)
+        logging.debug(f"AI primary — xAI-Grok: score={xai_score}, len={len(xai_result) if xai_result else 0}")
+        if xai_score > 0:
+            logging.info("AI response: xAI-Grok (primary)")
+            cache_response(cache_key, xai_result)
+            return xai_result
+        logging.warning("xAI (Grok) returned an unusable response — falling back to secondary providers")
+
+    # ── Fallback: parallel ensemble of remaining providers ───────────────────
     providers = []
     if OPENAI_API_KEY:
         providers.append(("OpenAI", _generate_openai_response))
-    if XAI_API:
-        providers.append(("xAI-Grok", _generate_xai_response))
     if HUGGING_FACE_TOKEN:
         providers.append(("HuggingFace", _generate_hf_chat_response))
 
@@ -2234,21 +2287,22 @@ def generate_llm_response(prompt, max_tokens=120, context=None):
             try:
                 results[name] = future.result()
             except Exception as e:
-                logging.error(f"Ensemble provider {name} raised: {e}")
+                logging.error(f"Fallback provider {name} raised: {e}")
                 results[name] = None
 
-    # Score all responses and pick the best
+    # Score fallback responses and return the best
     best_name, best_text, best_score = None, None, 0
     for name, text in results.items():
         score = _score_response(text, max_tokens)
-        logging.debug(f"AI ensemble — {name}: score={score}, len={len(text) if text else 0}")
+        logging.debug(f"AI fallback — {name}: score={score}, len={len(text) if text else 0}")
         if score > best_score:
             best_score = score
             best_text = text
             best_name = name
 
     if best_text:
-        logging.info(f"AI ensemble winner: {best_name} (score={best_score})")
+        logging.info(f"AI fallback winner: {best_name} (score={best_score})")
+        cache_response(cache_key, best_text)
         return best_text
 
     return None
@@ -2472,8 +2526,8 @@ def _compose_broadcast_message(broadcast_type: str) -> str | None:
     """
     message = None
 
-    # --- LLM path: try to generate a unique tweet ---
-    if LLM_ENABLED:
+    # --- LLM path: try to generate a unique tweet (but skip sometimes to save costs) ---
+    if LLM_ENABLED and random.random() > 0.3:  # 30% chance to skip LLM and use static responses
         price_context = None
         price_cache = load_price_cache()
         if price_cache and random.random() > 0.4:
@@ -2785,7 +2839,7 @@ def generate_contextual_response(username, message):
     if any(word in message_lower for word in [
         'launch', 'when', 'wen', 'afcaps', 'caps', 'token', 'release', 'drop', 'listing', 'date', 'tge', 'fizz'
     ]):
-        if LLM_ENABLED:
+        if LLM_ENABLED and random.random() > 0.4:  # 60% chance to skip LLM for token launch replies
             llm_reply = generate_overseer_tweet(
                 f"reply to @{username} asking about the $CAPS token launch or Fizz Caps — be dry, in-character, "
                 f"build curiosity without overpromising. Ticker is $CAPS. Under 250 chars.",
@@ -2859,9 +2913,9 @@ def generate_contextual_response(username, message):
             f"@{username} Night shift protocols active. Dream of glowing caps. {GAME_LINK}"
         ]
     else:
-        # Try LLM for open-ended replies
+        # Try LLM for open-ended replies (but skip sometimes to save costs)
         llm_reply = None
-        if LLM_ENABLED and user_message:
+        if LLM_ENABLED and user_message and random.random() > 0.5:  # 50% chance to skip LLM for replies
             llm_reply = generate_overseer_tweet(
                 f"reply to @{username} who said: '{user_message[:120]}'",
                 context=f"Keep the reply under 250 chars, start with @{username}",

@@ -43,7 +43,7 @@ The Overseer Bot now includes an enhanced web UI with **wallet integration** and
 ### Step 1: Install Dependencies
 
 ```bash
-cd /path/to/overseer-bot-ui
+cd /path/to/overseer-bot-ai
 pip install -r requirements.txt
 ```
 
@@ -627,7 +627,6 @@ The wallet UI works alongside Token-Scalper alerts:
 ### Need Help?
 
 - 📖 Read the [Complete Documentation](./DOCUMENTATION.md)
-- 🔍 Check [Token-Scalper Setup](./TOKEN_SCALPER_SETUP.md)
 - 🐛 Report issues on GitHub
 - 💬 Check logs in `overseer_ai.log`
 
