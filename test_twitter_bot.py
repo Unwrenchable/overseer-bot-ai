@@ -569,6 +569,28 @@ class TestLoreContent(unittest.TestCase):
         assert threat['level'] in [t['level'] for t in bot.THREAT_LEVELS]
 
 
+class TestHealthEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self.client = bot.app.test_client()
+
+    def test_health_check_is_public(self):
+        response = self.client.get("/health")
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "status": "ok",
+            "service": "overseer-bot",
+            "version": bot.SERVICE_VERSION,
+            "uptime": "healthy",
+        }
+
+    def test_root_still_requires_auth(self):
+        response = self.client.get("/")
+
+        assert response.status_code == 401
+
+
 # ===========================================================================
 # Run
 # ===========================================================================
