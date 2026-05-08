@@ -23,7 +23,7 @@ workers = 1
 worker_class = "gthread"
 
 # Number of threads per worker
-threads = 4
+threads = 8
 
 # Logging
 accesslog = "-"  # Log to stdout
@@ -32,6 +32,9 @@ loglevel = "info"
 
 # Timeout for worker silence (seconds)
 timeout = 120
+
+# Keep HTTP connections open briefly for better request reuse
+keepalive = 5
 
 
 def on_starting(server):
