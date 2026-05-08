@@ -52,6 +52,7 @@ logging.basicConfig(
 GAME_LINK = "https://www.atomicfizzcaps.xyz"
 BOT_NAME = "OVERSEER"
 VAULT_NUMBER = "77"
+SERVICE_VERSION = "1.0"
 
 # Configuration constants
 TWITTER_CHAR_LIMIT = 280
@@ -694,11 +695,15 @@ def verify_webhook_auth():
 # ------------------------------------------------------------
 # HEALTH CHECK ENDPOINT (No authentication required for monitoring)
 # ------------------------------------------------------------
-@app.route("/health")
+@app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint for monitoring services (no auth required)"""
-    from flask import jsonify
-    return jsonify({"status": "healthy", "service": "overseer-bot-ai"}), 200
+    return jsonify({
+        "status": "ok",
+        "service": "overseer-bot",
+        "version": SERVICE_VERSION,
+        "uptime": "healthy"
+    }), 200
 
 @app.route("/overseer-event", methods=["POST"])
 def overseer_event():
