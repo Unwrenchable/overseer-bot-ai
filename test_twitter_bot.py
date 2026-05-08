@@ -590,6 +590,14 @@ class TestHealthEndpoint(unittest.TestCase):
 
         assert response.status_code == 401
 
+    def test_health_check_stays_ok_when_other_services_are_degraded(self):
+        with patch.object(bot.api_client, 'get_health_status', side_effect=RuntimeError("down"), create=True), \
+             patch.object(bot, 'scheduler', MagicMock(running=False)):
+            response = self.client.get("/health")
+
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "ok"
+
 
 # ===========================================================================
 # Run
