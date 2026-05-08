@@ -22,8 +22,10 @@ workers = 1
 # Worker class - use gthread for apps with threading
 worker_class = "gthread"
 
-# Number of threads per worker
-threads = 4
+# Number of threads per worker. Keep concurrency in-process so the single
+# scheduler/background worker model stays intact while Render health checks and
+# dashboard/API requests can still overlap with slower outbound calls.
+threads = 8
 
 # Logging
 accesslog = "-"  # Log to stdout
@@ -32,6 +34,9 @@ loglevel = "info"
 
 # Timeout for worker silence (seconds)
 timeout = 120
+
+# Keep HTTP connections open briefly for better request reuse
+keepalive = 5
 
 
 def on_starting(server):
