@@ -22,7 +22,9 @@ workers = 1
 # Worker class - use gthread for apps with threading
 worker_class = "gthread"
 
-# Number of threads per worker
+# Number of threads per worker. Keep concurrency in-process so the single
+# scheduler/background worker model stays intact while Render health checks and
+# dashboard/API requests can still overlap with slower outbound calls.
 threads = 8
 
 # Logging
