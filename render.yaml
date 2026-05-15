@@ -18,6 +18,7 @@ services:
   - type: web
     name: overseer-bot
     env: python
+    rootDir: .
     plan: starter
     region: oregon
     healthCheckPath: /health
