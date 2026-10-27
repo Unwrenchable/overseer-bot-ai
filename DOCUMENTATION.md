@@ -67,7 +67,7 @@ gunicorn (workers=1)
 | `api_client.py` | HTTP polling client; tracks health of external services; aggregates alerts |
 | `gunicorn_config.py` | Production server config; `post_worker_init` calls `initialize_bot()` |
 | `setup_env.py` | Standalone interactive `.env` generator — not imported by the bot |
-| `test_twitter_bot.py` | Unit test suite (54 tests) |
+| `test_twitter_bot.py` | Unit test suite (71 tests) |
 
 ### Runtime Feature Flags
 
@@ -124,7 +124,7 @@ gunicorn -c gunicorn_config.py overseer_bot:app
 
 ```bash
 python test_twitter_bot.py
-# All 54 tests should pass. No real credentials required — all external APIs are mocked.
+# All 71 tests should pass. No real credentials required — all external APIs are mocked.
 ```
 
 ---
@@ -148,7 +148,7 @@ All configuration is via environment variables. Copy `.env.example` → `.env` a
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ADMIN_USERNAME` | `admin` | Dashboard login username |
-| `ADMIN_PASSWORD` | `vault77secure` | **Change this!** Dashboard password |
+| `ADMIN_PASSWORD` | *(none — required in production)* | Dashboard password. Startup fails if unset in production. Dev/test generates a random per-process value. |
 
 ### LLM / AI (any one enables `LLM_ENABLED`)
 
@@ -381,7 +381,7 @@ Add these to your `.env` (local) or platform environment variables (cloud).
 
 ### Production Checklist
 
-- [ ] Changed `ADMIN_PASSWORD` from default `vault77secure`
+- [ ] Set `ADMIN_PASSWORD` to a unique strong value (no built-in default; production will not start without it)
 - [ ] Set `WEBHOOK_API_KEY` to a 32+ char random string
 - [ ] HTTPS enabled (automatic on Render, Heroku, Railway)
 - [ ] `.env` is in `.gitignore` and not committed
@@ -497,7 +497,7 @@ grep "duplicate" overseer_ai.log  # duplicate tweet attempts
 
 ```bash
 pip install -r requirements.txt   # ensure deps are installed
-python test_twitter_bot.py        # all 54 tests should pass
+python test_twitter_bot.py        # all 71 tests should pass
 ```
 
 Tests mock all external APIs — no real credentials needed.
