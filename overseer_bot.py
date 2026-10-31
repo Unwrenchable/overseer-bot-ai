@@ -1,4 +1,6 @@
 import os
+import secrets
+import sys
 import time
 import logging
 import random
@@ -129,17 +131,91 @@ if not TWITTER_ENABLED:
     logging.warning("⚠️  - BEARER_TOKEN")
     logging.warning("="*60)
 
-# Admin authentication credentials
-ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
-ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'vault77secure')
+def _explicit_runtime_mode():
+    """First non-empty deployment mode from the usual environment variables."""
+    for key in ("APP_ENV", "FLASK_ENV", "ENV", "ENVIRONMENT"):
+        value = (os.getenv(key) or "").strip().lower()
+        if value:
+            return value
+    return ""
 
-# Security warning for default credentials
-if ADMIN_PASSWORD == 'vault77secure':
-    logging.warning("="*60)
-    logging.warning("⚠️  SECURITY WARNING: Using default admin password!")
-    logging.warning("⚠️  Change ADMIN_PASSWORD in production immediately!")
-    logging.warning("⚠️  Generate secure password: openssl rand -base64 32")
-    logging.warning("="*60)
+
+def _is_production_environment():
+    """Return True when a missing secret must abort startup.
+
+    Production is an explicit production mode, a hosted platform (Render,
+    Heroku, Railway production), or the Gunicorn process this repo uses
+    in production. A development label does not override those signals.
+    Local development and unit tests are not production.
+    """
+    mode = _explicit_runtime_mode()
+    if mode in {"production", "prod"}:
+        return True
+
+    # Unit-test runners are not production unless the mode above was
+    # explicitly production. This keeps `python test_twitter_bot.py` working
+    # even if a host variable leaked into the environment.
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    if (os.getenv("TESTING") or "").strip().lower() in {"1", "true", "yes"}:
+        return False
+
+    render_flag = (os.getenv("RENDER") or "").strip().lower()
+    if render_flag in {"true", "1", "yes"} or (os.getenv("RENDER_SERVICE_ID") or "").strip():
+        return True
+    if (os.getenv("DYNO") or "").strip():
+        return True
+    if (os.getenv("RAILWAY_ENVIRONMENT") or "").strip().lower() == "production":
+        return True
+    if "gunicorn" in " ".join(sys.argv).lower():
+        return True
+
+    if mode in {"development", "dev", "test", "testing", "local"}:
+        return False
+    return False
+
+
+def _configured_secret(name):
+    """Return the environment value, or None when it is unset or blank."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return value
+
+
+def _require_secret(name):
+    """Load a secret that must never fall back to a committed literal.
+
+    Production refuses to start when the variable is missing. Development
+    and tests generate a random value for this process only.
+    """
+    configured = _configured_secret(name)
+    if configured is not None:
+        return configured
+
+    if _is_production_environment():
+        logging.error("Refusing to start: required secret %s is not set.", name)
+        raise SystemExit(
+            f"ERROR: {name} is required in production but is not set. "
+            f"Refusing to start. Set {name} to a strong secret "
+            f"(generate one with: openssl rand -base64 32) and restart. "
+            f"This application does not ship a default value for {name}."
+        )
+
+    generated = secrets.token_urlsafe(32)
+    logging.warning(
+        "%s is not set. Generated a random value for this non-production "
+        "process. It changes on every restart and is not logged. "
+        "Set %s to use a stable secret.",
+        name,
+        name,
+    )
+    return generated
+
+
+# Admin authentication credentials. ADMIN_PASSWORD has no literal default.
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = _require_secret('ADMIN_PASSWORD')
 
 # Webhook API key for external services
 WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', '')  # Empty = no authentication required

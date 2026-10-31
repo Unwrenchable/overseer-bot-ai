@@ -81,7 +81,7 @@ Set these on your hosting platform (Render, Heroku, etc.):
 ### Step 2: Verify Configuration
 
 - [ ] All environment variables are set
-- [ ] **NOT using default password** (`vault77secure`)
+- [ ] `ADMIN_PASSWORD` is set to a unique strong value (the app has no default and will not boot in production without it)
 - [ ] **NOT using weak passwords** (< 20 characters)
 - [ ] Credentials are unique (not reused from other services)
 

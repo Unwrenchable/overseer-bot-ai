@@ -96,7 +96,7 @@ CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET, BEARER_TOKEN
 
 # Dashboard auth
 ADMIN_USERNAME (default: admin)
-ADMIN_PASSWORD (default: vault77secure — CHANGE IN PRODUCTION)
+ADMIN_PASSWORD (required in production — no default; dev/test may generate a random startup value)
 
 # LLM (any one enables LLM_ENABLED)
 OPENAI_API_KEY, OPENAI_BASE_URL, LLM_MODEL
@@ -181,7 +181,7 @@ WEBHOOK_API_KEY, PORT (default 5000), RENDER_EXTERNAL_URL
 pip install -r requirements.txt
 python test_twitter_bot.py
 ```
-All 54 tests should pass. Tests mock tweepy, ccxt, solana, and web3 so no real credentials are needed.
+All 71 tests should pass. Tests mock tweepy, ccxt, solana, and web3 so no real credentials are needed.
 Test classes: `TestTweetDedup`, `TestPriceAlertCooldown`, `TestIsTwitterDuplicateError`, `TestCalculatePriceChange`, `TestFallbackAlertMessage`, `TestGenerateOverseerTweet`, `TestLoreContent`, `TestPostPriceAlert`, `TestPostActivationTweet`, `TestOverseerDiagnostic`, `TestTwitterDisabledGate`.
 
 ### Deployment

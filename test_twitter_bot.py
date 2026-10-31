@@ -11,6 +11,8 @@ run without real Twitter credentials or network access.
 """
 
 import importlib
+import os
+import subprocess
 import sys
 import types
 import time
@@ -42,7 +44,6 @@ web3_stub.Web3 = MagicMock()
 # ---------------------------------------------------------------------------
 # Import the module with Twitter credentials absent so TWITTER_ENABLED=False
 # ---------------------------------------------------------------------------
-import os
 for _key in ['CONSUMER_KEY', 'CONSUMER_SECRET', 'ACCESS_TOKEN',
              'ACCESS_SECRET', 'BEARER_TOKEN']:
     os.environ.pop(_key, None)
@@ -597,6 +598,209 @@ class TestHealthEndpoint(unittest.TestCase):
 
         assert response.status_code == 200
         assert response.get_json()["status"] == "ok"
+
+
+# ===========================================================================
+# Admin password — no committed literal fallback
+# ===========================================================================
+
+_IMPORT_PROBE_PREFIX = """
+try:
+    import dotenv
+    dotenv.load_dotenv = lambda *args, **kwargs: False
+except ImportError:
+    pass
+import os
+import sys
+import types
+from unittest.mock import MagicMock
+os.environ.pop("RENDER", None)
+os.environ.pop("RENDER_SERVICE_ID", None)
+os.environ.pop("DYNO", None)
+os.environ.pop("RAILWAY_ENVIRONMENT", None)
+os.environ.pop("APP_ENV", None)
+os.environ.pop("ENV", None)
+os.environ.pop("ENVIRONMENT", None)
+os.environ.pop("PYTEST_CURRENT_TEST", None)
+os.environ.pop("TESTING", None)
+
+def _stub(name):
+    mod = types.ModuleType(name)
+    sys.modules[name] = mod
+    return mod
+
+for _name in ("ccxt", "solana", "solana.rpc", "solana.rpc.api",
+               "solders", "solders.keypair", "solders.pubkey",
+               "solders.transaction", "base58", "web3",
+               "api_client", "scalper"):
+    if _name not in sys.modules:
+        _stub(_name)
+sys.modules["base58"].b58decode = lambda value: b"\\x00" * 32
+sys.modules["web3"].Web3 = MagicMock()
+"""
+
+
+def _run_import_probe(source):
+    """Import overseer_bot in a fresh process so startup checks actually run."""
+    return subprocess.run(
+        [sys.executable, "-c", _IMPORT_PROBE_PREFIX + source],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+
+class TestAdminPasswordStartup(unittest.TestCase):
+
+    def test_production_refuses_startup_without_admin_password(self):
+        result = _run_import_probe(
+            'os.environ.pop("ADMIN_PASSWORD", None)\n'
+            'os.environ["FLASK_ENV"] = "production"\n'
+            "import overseer_bot\n"
+            'raise SystemExit("UNEXPECTED_START")\n'
+        )
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert result.returncode != 0
+        assert "UNEXPECTED_START" not in combined
+        assert "ADMIN_PASSWORD" in combined
+        assert "Refusing to start" in combined
+
+    def test_production_refuses_blank_admin_password(self):
+        result = _run_import_probe(
+            'os.environ["ADMIN_PASSWORD"] = "   "\n'
+            'os.environ["FLASK_ENV"] = "production"\n'
+            "import overseer_bot\n"
+            'raise SystemExit("UNEXPECTED_START")\n'
+        )
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert result.returncode != 0
+        assert "UNEXPECTED_START" not in combined
+        assert "Refusing to start" in combined
+
+    def test_production_starts_when_admin_password_is_set(self):
+        result = _run_import_probe(
+            'os.environ["ADMIN_PASSWORD"] = "unit-test-only-password"\n'
+            'os.environ["FLASK_ENV"] = "production"\n'
+            "import overseer_bot\n"
+            "assert overseer_bot.ADMIN_PASSWORD == \"unit-test-only-password\"\n"
+            'print("STARTUP_OK")\n'
+        )
+        assert result.returncode == 0, result.stderr
+        assert "STARTUP_OK" in result.stdout
+
+    def test_dev_startup_generates_distinct_random_passwords(self):
+        source = (
+            'os.environ.pop("ADMIN_PASSWORD", None)\n'
+            'os.environ["FLASK_ENV"] = "development"\n'
+            "import overseer_bot\n"
+            'print("ADMIN_PASSWORD_VALUE=" + overseer_bot.ADMIN_PASSWORD)\n'
+        )
+        first = _run_import_probe(source)
+        second = _run_import_probe(source)
+        assert first.returncode == 0, first.stderr
+        assert second.returncode == 0, second.stderr
+
+        def _value(output):
+            for line in output.splitlines():
+                if line.startswith("ADMIN_PASSWORD_VALUE="):
+                    return line.split("=", 1)[1]
+            raise AssertionError("generated password was not reported")
+
+        first_password = _value(first.stdout)
+        second_password = _value(second.stdout)
+        assert first_password != second_password
+        assert len(first_password) >= 32
+        assert len(second_password) >= 32
+
+    def test_require_secret_returns_configured_value_unchanged(self):
+        with patch.dict(os.environ, {"ADMIN_PASSWORD": "  kept-as-configured  "}, clear=False):
+            assert bot._require_secret("ADMIN_PASSWORD") == "  kept-as-configured  "
+
+    def test_require_secret_exits_in_production_when_missing(self):
+        env = {key: value for key, value in os.environ.items() if key != "ADMIN_PASSWORD"}
+        with patch.dict(os.environ, env, clear=True):
+            with patch.object(bot, "_is_production_environment", return_value=True):
+                try:
+                    bot._require_secret("ADMIN_PASSWORD")
+                except SystemExit as exc:
+                    message = str(exc)
+                else:
+                    raise AssertionError("expected SystemExit")
+        assert "ADMIN_PASSWORD" in message
+        assert "Refusing to start" in message
+
+    def test_render_environment_is_production(self):
+        with patch.dict(os.environ, {
+            "FLASK_ENV": "",
+            "APP_ENV": "",
+            "ENV": "",
+            "ENVIRONMENT": "",
+            "RENDER": "true",
+            "PYTEST_CURRENT_TEST": "",
+            "TESTING": "",
+        }, clear=False):
+            with patch.object(sys, "argv", ["python", "overseer_bot.py"]):
+                assert bot._is_production_environment() is True
+
+    def test_gunicorn_process_is_production(self):
+        with patch.dict(os.environ, {
+            "FLASK_ENV": "",
+            "APP_ENV": "",
+            "ENV": "",
+            "ENVIRONMENT": "",
+            "RENDER": "",
+            "RENDER_SERVICE_ID": "",
+            "DYNO": "",
+            "RAILWAY_ENVIRONMENT": "",
+            "PYTEST_CURRENT_TEST": "",
+            "TESTING": "",
+        }, clear=False):
+            with patch.object(sys, "argv", ["gunicorn", "-c", "gunicorn_config.py", "overseer_bot:app"]):
+                assert bot._is_production_environment() is True
+
+    def test_render_stays_production_even_if_flask_env_is_development(self):
+        with patch.dict(os.environ, {
+            "FLASK_ENV": "development",
+            "RENDER": "true",
+            "PYTEST_CURRENT_TEST": "",
+            "TESTING": "",
+        }, clear=False):
+            with patch.object(sys, "argv", ["python", "overseer_bot.py"]):
+                assert bot._is_production_environment() is True
+
+    def test_explicit_development_without_a_host_is_not_production(self):
+        with patch.dict(os.environ, {
+            "FLASK_ENV": "development",
+            "APP_ENV": "",
+            "ENV": "",
+            "ENVIRONMENT": "",
+            "RENDER": "",
+            "RENDER_SERVICE_ID": "",
+            "DYNO": "",
+            "RAILWAY_ENVIRONMENT": "",
+            "PYTEST_CURRENT_TEST": "",
+            "TESTING": "",
+        }, clear=False):
+            with patch.object(sys, "argv", ["overseer_bot.py"]):
+                assert bot._is_production_environment() is False
+
+    def test_local_process_is_not_production(self):
+        with patch.dict(os.environ, {
+            "FLASK_ENV": "",
+            "APP_ENV": "",
+            "ENV": "",
+            "ENVIRONMENT": "",
+            "RENDER": "",
+            "RENDER_SERVICE_ID": "",
+            "DYNO": "",
+            "RAILWAY_ENVIRONMENT": "",
+            "PYTEST_CURRENT_TEST": "",
+            "TESTING": "",
+        }, clear=False):
+            with patch.object(sys, "argv", ["overseer_bot.py"]):
+                assert bot._is_production_environment() is False
 
 
 # ===========================================================================
