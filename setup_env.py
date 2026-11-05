@@ -226,7 +226,7 @@ def setup_admin_auth(env_vars):
     
     # Password
     current_password = env_vars.get('ADMIN_PASSWORD', '')
-    if current_password and current_password != 'vault77secure':
+    if current_password:
         print_info("A password is already set")
         if prompt_yes_no("Generate a new secure password?", default=False):
             generated_admin_cred = generate_secure_password()

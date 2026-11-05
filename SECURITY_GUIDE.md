@@ -235,7 +235,7 @@ services:
 
 ### ❌ DON'T
 
-- ❌ Use default credentials (`admin` / `vault77secure`) in production
+- ❌ Deploy without `ADMIN_PASSWORD`. Production refuses to start when it is unset. There is no built-in password.
 - ❌ Commit `.env` file to Git
 - ❌ Share credentials in plain text (email, Slack, etc.)
 - ❌ Use the same password across environments

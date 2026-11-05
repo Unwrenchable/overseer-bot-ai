@@ -132,7 +132,7 @@ http://localhost:5000
 
 Login with your `.env` credentials:
 - **Username:** `ADMIN_USERNAME` (default: `admin`)
-- **Password:** `ADMIN_PASSWORD` (**⚠️ change this before deploying!**)
+- **Password:** `ADMIN_PASSWORD` (required in production; no built-in default)
 
 Dashboard tabs:
 - 📊 **Monitoring** — real-time bot status and scheduler jobs
@@ -166,9 +166,15 @@ ACCESS_TOKEN=your_access_token
 ACCESS_SECRET=your_access_token_secret
 BEARER_TOKEN=your_bearer_token
 
-# ── Dashboard auth (required) ─────────────────────────────────────────────
+# ── Dashboard auth ────────────────────────────────────────────────────────
+# ADMIN_PASSWORD is required in production (gunicorn / Render / Heroku /
+# Railway). Startup fails with a clear error when it is missing.
+# There is no built-in default. Generate: openssl rand -base64 32
+# Local dev/test (`python overseer_bot.py`, the unit tests) generates a
+# random password for that process when this is unset. Set it here if you
+# need a stable dashboard login.
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=change_me_strong_password   # ⚠️  CHANGE THIS
+ADMIN_PASSWORD=
 
 # ── AI / LLM (at least one enables AI-generated tweets) ───────────────────
 # Priority order: xAI → OpenAI → HuggingFace
@@ -362,7 +368,7 @@ overseer-bot-ai/
 
 Before deploying to production:
 
-1. ✅ Change default `ADMIN_PASSWORD` from `vault77secure`
+1. ✅ Set a strong `ADMIN_PASSWORD` (required; production refuses to start without it)
 2. ✅ Generate a strong `WEBHOOK_API_KEY` (`openssl rand -hex 32`)
 3. ✅ Enable HTTPS (automatic on Render / Heroku / Railway)
 4. ✅ Never commit `.env` to Git
@@ -382,6 +388,7 @@ Before deploying to production:
 **Dashboard not accessible?**
 - Check `PORT` env var (default: 5000)
 - Verify `ADMIN_USERNAME` / `ADMIN_PASSWORD`
+- Production logs `Refusing to start` when `ADMIN_PASSWORD` is missing
 - Check firewall rules for remote deployments
 
 **Price data missing?**
